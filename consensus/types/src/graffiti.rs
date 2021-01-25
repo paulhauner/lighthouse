@@ -11,7 +11,7 @@ use tree_hash::TreeHash;
 pub const GRAFFITI_BYTES_LEN: usize = 32;
 
 /// The 32-byte `graffiti` field on a beacon block.
-#[derive(Default, Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Default, Debug, PartialEq, Clone, Copy, Serialize, Deserialize, Hash, Eq)]
 #[serde(transparent)]
 #[cfg_attr(feature = "arbitrary-fuzz", derive(arbitrary::Arbitrary))]
 pub struct Graffiti(#[serde(with = "serde_graffiti")] pub [u8; GRAFFITI_BYTES_LEN]);
@@ -21,6 +21,12 @@ impl Graffiti {
         #[allow(clippy::invalid_regex)] // This is a false positive, this regex is valid.
         let re = Regex::new("\\p{C}").expect("graffiti regex is valid");
         String::from_utf8_lossy(&re.replace_all(&self.0[..], &b""[..])).to_string()
+    }
+
+    /// If the graffiti is valid utf8, then represent it as utf8. Otherwise, represent it as
+    /// 32 bytes of 0x-prefixed hex.
+    pub fn as_utf8_or_hex(&self) -> String {
+        String::from_utf8(self.0.to_vec()).unwrap_or_else(|_| self.to_string())
     }
 }
 

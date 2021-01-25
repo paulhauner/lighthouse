@@ -3,6 +3,7 @@ extern crate log;
 mod change_genesis_time;
 mod check_deposit_data;
 mod eth1_genesis;
+mod etl_validator_performance;
 mod generate_bootnode_enr;
 mod insecure_validators;
 mod interop_genesis;
@@ -460,6 +461,45 @@ fn main() {
                         .help("The directory for storing secrets."),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("etl-validator-performance")
+                .about("Performs an ETL on a BN database to determine validator performance.")
+                .arg(
+                    Arg::with_name("output")
+                        .long("output")
+                        .short("o")
+                        .value_name("PATH")
+                        .takes_value(true)
+                        .help("Path to output a CSV file."),
+                )
+                .arg(
+                    Arg::with_name("chain-db")
+                        .long("chain-db")
+                        .value_name("DIRECTORY")
+                        .takes_value(true)
+                        .help("Path to the hot database directory.")
+                        .default_value("/home/paul/.lighthouse/mainnet/beacon/chain_db"),
+                )
+                .arg(
+                    Arg::with_name("freezer-db")
+                        .long("freezer-db")
+                        .value_name("DIRECTORY")
+                        .takes_value(true)
+                        .help("Path to the freezer database directory.")
+                        .default_value("/home/paul/.lighthouse/mainnet/beacon/freezer_db"),
+                )
+                .arg(
+                    Arg::with_name("epochs")
+                        .long("epochs")
+                        .value_name("DIRECTORY")
+                        .takes_value(true)
+                        .help(
+                            "The number of epochs to walk backwards from the head of the \
+                            freezer db.",
+                        )
+                        .default_value("1024"),
+                ),
+        )
         .get_matches();
 
     let result = matches
@@ -556,6 +596,10 @@ fn run<T: EthSpec>(
             .map_err(|e| format!("Failed to run generate-bootnode-enr command: {}", e)),
         ("insecure-validators", Some(matches)) => insecure_validators::run(matches)
             .map_err(|e| format!("Failed to run insecure-validators command: {}", e)),
+        ("etl-validator-performance", Some(matches)) => {
+            etl_validator_performance::run::<T>(matches)
+                .map_err(|e| format!("Failed to run etl-validator-performance command: {}", e))
+        }
         (other, _) => Err(format!("Unknown subcommand {}. See --help.", other)),
     }
 }
