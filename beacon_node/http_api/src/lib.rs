@@ -14,7 +14,7 @@ mod validator_inclusion;
 use beacon_chain::{
     attestation_verification::SignatureVerifiedAttestation,
     observed_operations::ObservationOutcome, validator_monitor::timestamp_now,
-    AttestationError as AttnError, BeaconChain, BeaconChainError, BeaconChainTypes,
+    AttestationError as AttnError, BeaconChain, BeaconChainError, BeaconChainTypes, BeaconSnapshot,
 };
 use beacon_proposer_cache::BeaconProposerCache;
 use block_id::BlockId;
@@ -30,6 +30,7 @@ use ssz::Encode;
 use state_id::StateId;
 use state_processing::per_slot_processing;
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::convert::TryInto;
 use std::future::Future;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
@@ -39,8 +40,8 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc::UnboundedSender;
 use types::{
     Attestation, AttestationDuty, AttesterSlashing, CloneConfig, CommitteeCache, Epoch, EthSpec,
-    Hash256, ProposerSlashing, PublicKey, PublicKeyBytes, RelativeEpoch, SignedAggregateAndProof,
-    SignedBeaconBlock, SignedVoluntaryExit, Slot, YamlConfig,
+    Graffiti, Hash256, ProposerSlashing, PublicKey, PublicKeyBytes, RelativeEpoch,
+    SignedAggregateAndProof, SignedBeaconBlock, SignedVoluntaryExit, Slot, YamlConfig,
 };
 use warp::http::StatusCode;
 use warp::sse::ServerSentEvent;
@@ -51,6 +52,8 @@ use warp_utils::task::{blocking_json_task, blocking_task};
 
 const API_PREFIX: &str = "eth";
 const API_VERSION: &str = "v1";
+
+type ValidatorIndex = u64;
 
 /// If the node is within this many epochs from the head, we declare it to be synced regardless of
 /// the network sync state.
@@ -2243,6 +2246,85 @@ pub fn serve<T: BeaconChainTypes>(
             })
         });
 
+    // GET lighthouse/validator_graffiti
+    let get_lighthouse_validator_graffiti = warp::path("lighthouse")
+        .and(warp::path("validator_graffiti"))
+        .and(warp::path::end())
+        .and(chain_filter.clone())
+        .and_then(|chain: Arc<BeaconChain<T>>| {
+            blocking_json_task(move || {
+                let (mut head_root, num_validators) = chain
+                    .with_head(|head: &BeaconSnapshot<T::EthSpec>| {
+                        Ok::<_, BeaconChainError>((
+                            head.beacon_block_root,
+                            head.beacon_state.validators.len(),
+                        ))
+                    })
+                    .map_err(|e| {
+                        warp_utils::reject::custom_server_error(format!(
+                            "Unable to read head of chain: {:?}",
+                            e
+                        ))
+                    })?;
+                let mut graffiti: Vec<HashSet<Graffiti>> =
+                    vec![HashSet::with_capacity(1); num_validators];
+                loop {
+                    match chain
+                        .store
+                        .get_item::<SignedBeaconBlock<T::EthSpec>>(&head_root)
+                    {
+                        Ok(Some(block)) => {
+                            graffiti
+                                .get_mut(block.message.proposer_index as usize)
+                                .ok_or_else(|| {
+                                    warp_utils::reject::custom_server_error(format!(
+                                        "Too many validators: {:?}",
+                                        block.message.proposer_index
+                                    ))
+                                })?
+                                .insert(block.message.body.graffiti);
+
+                            head_root = block.message.parent_root;
+
+                            if block.message.slot == 0 {
+                                break;
+                            }
+                        }
+                        Ok(None) => break,
+                        Err(e) => {
+                            return Err(warp_utils::reject::custom_server_error(format!(
+                                "Unable to load block from DB: {:?}",
+                                e
+                            )))
+                        }
+                    }
+                }
+
+                #[derive(Serialize, Deserialize)]
+                struct Output {
+                    validator: ValidatorIndex,
+                    graffiti: Vec<String>,
+                };
+
+                let mut for_display: Vec<Output> = graffiti
+                    .into_iter()
+                    .enumerate()
+                    .map(|(validator, graffiti)| {
+                        let mut graffiti = graffiti
+                            .iter()
+                            .map(Graffiti::as_utf8_or_hex)
+                            .collect::<Vec<_>>();
+                        graffiti.sort_unstable();
+                        Output {
+                            validator: validator as u64,
+                            graffiti,
+                        }
+                    })
+                    .collect();
+                Ok(api_types::GenericResponse::from(for_display))
+            })
+        });
+
     // GET lighthouse/eth1/syncing
     let get_lighthouse_eth1_syncing = warp::path("lighthouse")
         .and(warp::path("eth1"))
@@ -2463,6 +2545,7 @@ pub fn serve<T: BeaconChainTypes>(
                 .or(get_lighthouse_proto_array.boxed())
                 .or(get_lighthouse_validator_inclusion_global.boxed())
                 .or(get_lighthouse_validator_inclusion.boxed())
+                .or(get_lighthouse_validator_graffiti.boxed())
                 .or(get_lighthouse_eth1_syncing.boxed())
                 .or(get_lighthouse_eth1_block_cache.boxed())
                 .or(get_lighthouse_eth1_deposit_cache.boxed())
