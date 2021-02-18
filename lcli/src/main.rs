@@ -489,15 +489,26 @@ fn main() {
                         .default_value("/home/paul/.lighthouse/mainnet/beacon/freezer_db"),
                 )
                 .arg(
-                    Arg::with_name("epochs")
-                        .long("epochs")
-                        .value_name("DIRECTORY")
+                    Arg::with_name("start-epoch")
+                        .long("start-epoch")
+                        .value_name("EPOCH")
                         .takes_value(true)
                         .help(
-                            "The number of epochs to walk backwards from the head of the \
-                            freezer db.",
+                            "The first epoch in the range of epochs to be evaluated. Use with \
+                            --end-epoch.",
                         )
-                        .default_value("1024"),
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("end-epoch")
+                        .long("end-epoch")
+                        .value_name("EPOCH")
+                        .takes_value(true)
+                        .help(
+                            "The last epoch in the range of epochs to be evaluated. Use with \
+                            --start-epoch.",
+                        )
+                        .required(true),
                 ),
         )
         .get_matches();

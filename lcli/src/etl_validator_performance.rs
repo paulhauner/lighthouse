@@ -1,7 +1,7 @@
 use clap::ArgMatches;
 use environment::null_logger;
 use state_processing::{per_block_processing, per_slot_processing, BlockSignatureStrategy};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
@@ -17,7 +17,8 @@ struct ValidatorPerformance {
     pub head_attestation_misses: usize,
     pub target_attestation_hits: usize,
     pub target_attestation_misses: usize,
-    pub head_attester_when_first_slot_empty: usize,
+    pub first_slot_head_attester_when_first_slot_empty: usize,
+    pub first_slot_head_attester_when_first_slot_not_empty: usize,
     pub delays: HashMap<u64, u64>,
 }
 
@@ -25,7 +26,8 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
     let hot_path: PathBuf = clap_utils::parse_required(matches, "chain-db")?;
     let cold_path: PathBuf = clap_utils::parse_required(matches, "freezer-db")?;
     let output_path: PathBuf = clap_utils::parse_required(matches, "output")?;
-    let epochs: Epoch = clap_utils::parse_required(matches, "epochs")?;
+    let start_epoch: Epoch = clap_utils::parse_required(matches, "start-epoch")?;
+    let end_epoch: Epoch = clap_utils::parse_required(matches, "end-epoch")?;
 
     let mut file = OpenOptions::new()
         .read(true)
@@ -52,19 +54,29 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
     let mut perfs = vec![ValidatorPerformance::default(); split_state.validators.len()];
 
     let latest_slot = split_slot;
-    let latest_epoch = latest_slot.epoch(T::slots_per_epoch());
-    let earliest_epoch = latest_epoch - epochs;
+    let latest_known_epoch = latest_slot.epoch(T::slots_per_epoch());
+
+    if latest_known_epoch < end_epoch {
+        return Err(format!(
+            "End epoch is {} but latest finalized epoch is {}",
+            end_epoch, latest_known_epoch
+        ));
+    }
 
     eprintln!(
         "Latest slot in freezer DB is {} (epoch {})",
-        latest_slot, latest_epoch
+        latest_slot, end_epoch
     );
 
-    eprintln!("Collecting {} epochs of blocks", epochs);
+    eprintln!(
+        "Collecting {} epochs of blocks",
+        (end_epoch - start_epoch) + 1
+    );
 
     let mut block_roots: Vec<Hash256> = BlockRootsIterator::owned(store.clone(), split_state)
         .map(|result| result.expect("should get info for slot"))
-        .take_while(|(_, slot)| slot.epoch(T::slots_per_epoch()) >= earliest_epoch)
+        .skip_while(|(_, slot)| slot.epoch(T::slots_per_epoch()) > end_epoch)
+        .take_while(|(_, slot)| slot.epoch(T::slots_per_epoch()) >= start_epoch)
         .map(|(root, _)| root)
         .collect();
 
@@ -80,6 +92,10 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
                 .expect("block is not in store")
         })
         .collect::<Vec<_>>();
+
+    if blocks.is_empty() {
+        return Err("Query did not return any blocks".to_string());
+    }
 
     eprintln!("Starting replay of {} blocks", blocks.len());
 
@@ -115,37 +131,57 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
 
                 let prev_epoch_target_slot =
                     state.previous_epoch().start_slot(T::slots_per_epoch());
-                let penultimate_epoch_end_slot = prev_epoch_target_slot;
+                let penultimate_epoch_end_slot = prev_epoch_target_slot - 1;
                 let first_slot_empty = state.get_block_root(prev_epoch_target_slot).unwrap()
                     == state.get_block_root(penultimate_epoch_end_slot).unwrap();
+
+                let first_slot_attesters = {
+                    let committee_count = state
+                        .get_committee_count_at_slot(prev_epoch_target_slot)
+                        .unwrap();
+                    let mut indices = HashSet::new();
+                    for committee_index in 0..committee_count {
+                        let committee = state
+                            .get_beacon_committee(prev_epoch_target_slot, committee_index)
+                            .unwrap();
+                        for validator_index in committee.committee {
+                            indices.insert(validator_index);
+                        }
+                    }
+                    indices
+                };
 
                 for (i, s) in summary.statuses.into_iter().enumerate() {
                     let perf = perfs.get_mut(i).expect("no perf for validator");
                     if s.is_active_in_previous_epoch {
                         if s.is_previous_epoch_attester {
                             perf.attestation_hits += 1;
+
+                            if s.is_previous_epoch_head_attester {
+                                perf.head_attestation_hits += 1;
+                            } else {
+                                perf.head_attestation_misses += 1;
+                            }
+
+                            if s.is_previous_epoch_target_attester {
+                                perf.target_attestation_hits += 1;
+                            } else {
+                                perf.target_attestation_misses += 1;
+                            }
+
+                            if first_slot_attesters.contains(&i) {
+                                if first_slot_empty {
+                                    perf.first_slot_head_attester_when_first_slot_empty += 1
+                                } else {
+                                    perf.first_slot_head_attester_when_first_slot_not_empty += 1
+                                }
+                            }
+
+                            if let Some(inclusion_info) = s.inclusion_info {
+                                *perf.delays.entry(inclusion_info.delay).or_default() += 1
+                            }
                         } else {
                             perf.attestation_misses += 1;
-                        }
-
-                        if s.is_previous_epoch_head_attester {
-                            perf.head_attestation_hits += 1;
-                        } else {
-                            perf.head_attestation_misses += 1;
-                        }
-
-                        if s.is_previous_epoch_target_attester {
-                            perf.target_attestation_hits += 1;
-                        } else {
-                            perf.target_attestation_misses += 1;
-                        }
-
-                        if let Some(inclusion_info) = s.inclusion_info {
-                            *perf.delays.entry(inclusion_info.delay).or_default() += 1
-                        }
-
-                        if first_slot_empty && s.is_previous_epoch_head_attester {
-                            perf.head_attester_when_first_slot_empty += 1
                         }
                     }
                 }
@@ -174,7 +210,8 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
         target_attestation_hits,\
         target_attestation_misses,\
         delay_avg,\
-        head_attester_when_first_slot_empty\n"
+        first_slot_head_attester_when_first_slot_empty,\
+        first_slot_head_attester_when_first_slot_not_empty\n"
     )
     .unwrap();
 
@@ -188,7 +225,7 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
 
         write!(
             file,
-            "{},{},{},{},{},{},{},{},{}\n",
+            "{},{},{},{},{},{},{},{},{},{}\n",
             i,
             perf.attestation_hits,
             perf.attestation_misses,
@@ -201,7 +238,8 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
             } else {
                 sum as f64 / count as f64
             },
-            perf.head_attester_when_first_slot_empty
+            perf.first_slot_head_attester_when_first_slot_empty,
+            perf.first_slot_head_attester_when_first_slot_not_empty
         )
         .unwrap();
     }
