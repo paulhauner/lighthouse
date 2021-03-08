@@ -3,6 +3,7 @@ extern crate log;
 mod change_genesis_time;
 mod check_deposit_data;
 mod eth1_genesis;
+mod etl_attestation_packing;
 mod etl_block_votes;
 mod etl_validator_performance;
 mod generate_bootnode_enr;
@@ -572,6 +573,69 @@ fn main() {
                         ),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("etl-attestation-packing")
+                .about(
+                    "Performs an ETL on a BN database to determine number of unique attestation \
+                    inclusions per block.",
+                )
+                .arg(
+                    Arg::with_name("output")
+                        .long("output")
+                        .short("o")
+                        .value_name("PATH")
+                        .takes_value(true)
+                        .help("Path to output a CSV file."),
+                )
+                .arg(
+                    Arg::with_name("chain-db")
+                        .long("chain-db")
+                        .value_name("DIRECTORY")
+                        .takes_value(true)
+                        .help("Path to the hot database directory.")
+                        .default_value("/home/paul/.lighthouse/mainnet/beacon/chain_db"),
+                )
+                .arg(
+                    Arg::with_name("freezer-db")
+                        .long("freezer-db")
+                        .value_name("DIRECTORY")
+                        .takes_value(true)
+                        .help("Path to the freezer database directory.")
+                        .default_value("/home/paul/.lighthouse/mainnet/beacon/freezer_db"),
+                )
+                .arg(
+                    Arg::with_name("start-epoch")
+                        .long("start-epoch")
+                        .value_name("EPOCH")
+                        .takes_value(true)
+                        .help(
+                            "The first epoch in the range of epochs to be evaluated. Use with \
+                            --end-epoch.",
+                        )
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("end-epoch")
+                        .long("end-epoch")
+                        .value_name("EPOCH")
+                        .takes_value(true)
+                        .help(
+                            "The last epoch in the range of epochs to be evaluated. Use with \
+                            --start-epoch.",
+                        )
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("filter-unique-inclusions-above")
+                        .long("filter-unique-inclusions-above")
+                        .value_name("COUNT")
+                        .takes_value(true)
+                        .help(
+                            "If supplied, only output blocks with less than or equal to the \
+                            given count of unique vote inclusions.",
+                        ),
+                ),
+        )
         .get_matches();
 
     let result = matches
@@ -674,6 +738,8 @@ fn run<T: EthSpec>(
         }
         ("etl-block-votes", Some(matches)) => etl_block_votes::run::<T>(matches)
             .map_err(|e| format!("Failed to run etl-block-votes command: {}", e)),
+        ("etl-attestation-packing", Some(matches)) => etl_attestation_packing::run::<T>(matches)
+            .map_err(|e| format!("Failed to run etl-attestation-packing command: {}", e)),
         (other, _) => Err(format!("Unknown subcommand {}. See --help.", other)),
     }
 }
