@@ -10,6 +10,7 @@ use crate::{
     BeaconChain, BeaconChainTypes, BlockError, ChainConfig, ServerSentEventHandler,
     StateSkipConfig,
 };
+use environment::{Environment, EnvironmentBuilder};
 use futures::channel::mpsc::Receiver;
 use genesis::interop_genesis_state;
 use parking_lot::Mutex;
@@ -116,6 +117,7 @@ pub struct BeaconChainHarness<T: BeaconChainTypes> {
     pub spec: ChainSpec,
     pub data_dir: TempDir,
     pub shutdown_receiver: Receiver<&'static str>,
+    pub environment: Environment<T::EthSpec>,
 
     pub rng: Mutex<StdRng>,
 }
@@ -180,6 +182,14 @@ impl<E: EthSpec> BeaconChainHarness<EphemeralHarnessType<E>> {
 
         let log = test_logger();
 
+        let mut environment = EnvironmentBuilder::new(eth_spec_instance.clone(), spec.clone())
+            .null_logger()
+            .expect("should build env logger")
+            .multi_threaded_tokio_runtime()
+            .expect("should start tokio runtime")
+            .build()
+            .expect("environment should build");
+
         let store = HotColdDB::open_ephemeral(store_config, spec.clone(), log.clone()).unwrap();
         let chain = BeaconChainBuilder::new(eth_spec_instance)
             .logger(log.clone())
@@ -192,7 +202,7 @@ impl<E: EthSpec> BeaconChainHarness<EphemeralHarnessType<E>> {
                     .expect("should generate interop state"),
             )
             .expect("should build state using recent genesis")
-            .dummy_eth1_backend()
+            .dummy_eth1_backend(environment.core_context().executor)
             .expect("should build dummy backend")
             .testing_slot_clock(HARNESS_SLOT_TIME)
             .expect("should configure testing slot clock")
@@ -212,6 +222,7 @@ impl<E: EthSpec> BeaconChainHarness<EphemeralHarnessType<E>> {
             validator_keypairs,
             data_dir,
             shutdown_receiver,
+            environment,
             rng: make_rng(),
         }
     }
@@ -230,6 +241,14 @@ impl<E: EthSpec> BeaconChainHarness<DiskHarnessType<E>> {
         let log = test_logger();
         let (shutdown_tx, shutdown_receiver) = futures::channel::mpsc::channel(1);
 
+        let mut environment = EnvironmentBuilder::new(eth_spec_instance.clone(), spec.clone())
+            .null_logger()
+            .expect("should build env logger")
+            .multi_threaded_tokio_runtime()
+            .expect("should start tokio runtime")
+            .build()
+            .expect("environment should build");
+
         let chain = BeaconChainBuilder::new(eth_spec_instance)
             .logger(log.clone())
             .custom_spec(spec.clone())
@@ -242,7 +261,7 @@ impl<E: EthSpec> BeaconChainHarness<DiskHarnessType<E>> {
                     .expect("should generate interop state"),
             )
             .expect("should build state using recent genesis")
-            .dummy_eth1_backend()
+            .dummy_eth1_backend(environment.core_context().executor)
             .expect("should build dummy backend")
             .testing_slot_clock(HARNESS_SLOT_TIME)
             .expect("should configure testing slot clock")
@@ -257,6 +276,7 @@ impl<E: EthSpec> BeaconChainHarness<DiskHarnessType<E>> {
             validator_keypairs,
             data_dir,
             shutdown_receiver,
+            environment,
             rng: make_rng(),
         }
     }
@@ -275,6 +295,14 @@ impl<E: EthSpec> BeaconChainHarness<DiskHarnessType<E>> {
         let log = test_logger();
         let (shutdown_tx, shutdown_receiver) = futures::channel::mpsc::channel(1);
 
+        let mut environment = EnvironmentBuilder::new(eth_spec_instance.clone(), spec.clone())
+            .null_logger()
+            .expect("should build env logger")
+            .multi_threaded_tokio_runtime()
+            .expect("should start tokio runtime")
+            .build()
+            .expect("environment should build");
+
         let chain = BeaconChainBuilder::new(eth_spec_instance)
             .logger(log.clone())
             .custom_spec(spec)
@@ -284,7 +312,7 @@ impl<E: EthSpec> BeaconChainHarness<DiskHarnessType<E>> {
             .data_dir(data_dir.path().to_path_buf())
             .resume_from_db()
             .expect("should resume beacon chain from db")
-            .dummy_eth1_backend()
+            .dummy_eth1_backend(environment.core_context().executor)
             .expect("should build dummy backend")
             .testing_slot_clock(Duration::from_secs(1))
             .expect("should configure testing slot clock")
@@ -299,6 +327,7 @@ impl<E: EthSpec> BeaconChainHarness<DiskHarnessType<E>> {
             validator_keypairs,
             data_dir,
             shutdown_receiver,
+            environment,
             rng: make_rng(),
         }
     }
