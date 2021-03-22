@@ -112,6 +112,7 @@ pub enum BeaconChainError {
         state_epoch: Epoch,
         shuffling_epoch: Epoch,
     },
+    PriorToGenesis,
 }
 
 easy_from_to!(SlotProcessingError, BeaconChainError);
@@ -134,6 +135,7 @@ easy_from_to!(StateAdvanceError, BeaconChainError);
 #[derive(Debug)]
 pub enum BlockProductionError {
     UnableToGetHeadInfo(BeaconChainError),
+    UnableToGetBeaconChainData(BeaconChainError),
     UnableToGetBlockRootFromState,
     UnableToReadSlot,
     UnableToProduceAtSlot(Slot),
@@ -150,7 +152,6 @@ pub enum BlockProductionError {
         produce_at_slot: Slot,
         state_slot: Slot,
     },
-    PriorToGenesis,
 }
 
 easy_from_to!(BlockProcessingError, BlockProductionError);
