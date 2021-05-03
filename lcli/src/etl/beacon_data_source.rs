@@ -6,13 +6,13 @@ use types::{BeaconState, ChainSpec, Epoch, EthSpec, Hash256, Slot};
 
 pub use store::config::DEFAULT_SLOTS_PER_RESTORE_POINT;
 
-pub struct StoreTool<E: EthSpec> {
+pub struct BeaconDataSource<E: EthSpec> {
     pub store: Arc<HotColdDB<E, LevelDB<E>, LevelDB<E>>>,
     pub split_slot: Slot,
 }
 
-impl<E: EthSpec> StoreTool<E> {
-    pub fn open<P: AsRef<Path>>(
+impl<E: EthSpec> BeaconDataSource<E> {
+    pub fn lighthouse_database<P: AsRef<Path>>(
         hot_path: P,
         cold_path: P,
         slots_per_restore_point: u64,

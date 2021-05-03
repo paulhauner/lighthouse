@@ -1,4 +1,4 @@
-use crate::etl::store_tool::{StoreTool, DEFAULT_SLOTS_PER_RESTORE_POINT};
+use crate::etl::beacon_data_source::{BeaconDataSource, DEFAULT_SLOTS_PER_RESTORE_POINT};
 use clap::ArgMatches;
 use state_processing::{per_block_processing, per_slot_processing, BlockSignatureStrategy};
 use std::collections::{HashMap, HashSet};
@@ -36,15 +36,15 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
 
     let spec = T::default_spec();
 
-    let store_tool = StoreTool::open(
+    let beacon_data_source: BeaconDataSource<T> = BeaconDataSource::lighthouse_database(
         hot_path,
         cold_path,
         DEFAULT_SLOTS_PER_RESTORE_POINT,
         spec.clone(),
     )?;
-    let store = store_tool.store.clone();
+    let store = beacon_data_source.store.clone();
 
-    let split_state = store_tool.split_slot_state()?;
+    let split_state = beacon_data_source.split_slot_state()?;
     let mut perfs = vec![ValidatorPerformance::default(); split_state.validators.len()];
 
     eprintln!(
@@ -52,7 +52,7 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
         (end_epoch - start_epoch) + 1
     );
 
-    let block_roots = store_tool.block_roots_in_range(start_epoch, end_epoch)?;
+    let block_roots = beacon_data_source.block_roots_in_range(start_epoch, end_epoch)?;
 
     let blocks = block_roots
         .iter()

@@ -1,4 +1,4 @@
-use crate::etl::store_tool::{StoreTool, DEFAULT_SLOTS_PER_RESTORE_POINT};
+use crate::etl::beacon_data_source::{BeaconDataSource, DEFAULT_SLOTS_PER_RESTORE_POINT};
 use clap::ArgMatches;
 use std::collections::HashMap;
 use std::fs::OpenOptions;
@@ -34,20 +34,20 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
 
     let spec = T::default_spec();
 
-    let store_tool: StoreTool<T> = StoreTool::open(
+    let beacon_data_source: BeaconDataSource<T> = BeaconDataSource::lighthouse_database(
         hot_path,
         cold_path,
         DEFAULT_SLOTS_PER_RESTORE_POINT,
         spec.clone(),
     )?;
-    let store = store_tool.store.clone();
+    let store = beacon_data_source.store.clone();
 
     eprintln!(
         "Collecting {} epochs of blocks",
         (end_epoch - start_epoch) + 1
     );
 
-    let block_roots = store_tool.block_roots_in_range(start_epoch, end_epoch)?;
+    let block_roots = beacon_data_source.block_roots_in_range(start_epoch, end_epoch)?;
 
     if block_roots.is_empty() {
         return Err("Query did not return any blocks".to_string());
