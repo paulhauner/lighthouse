@@ -3362,6 +3362,7 @@ dependencies = [
  "serde_yaml",
  "simple_logger",
  "state_processing",
+ "store",
  "tokio 1.2.0",
  "tree_hash",
  "types",
