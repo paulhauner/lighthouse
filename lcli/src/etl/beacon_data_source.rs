@@ -6,12 +6,26 @@ use types::{BeaconState, ChainSpec, Epoch, EthSpec, Hash256, SignedBeaconBlock, 
 
 pub use store::config::DEFAULT_SLOTS_PER_RESTORE_POINT;
 
+/// An abstract source of Beacon Chain information.
+///
+/// Presently, the only source of data is reading a Lighthouse database. However this struct could
+/// be expanded to use the standard HTTP API.
 pub struct BeaconDataSource<E: EthSpec> {
     store: Arc<HotColdDB<E, LevelDB<E>, LevelDB<E>>>,
     split_slot: Slot,
 }
 
 impl<E: EthSpec> BeaconDataSource<E> {
+    /// Open a Lighthouse on-disk database (LevelDB) and read information from there.
+    ///
+    /// ## Notes
+    ///
+    /// The Lighthouse database must be presently *unused*. I.e., you should have used `lighthouse`
+    /// to sync it, then terminated the process that we can access it here. LevelDB does not support
+    /// multi-process access.
+    ///
+    /// For simplicity, only values from the "cold" database are returned. I.e., only information
+    /// about finalized blocks and state will be returned reliably.
     pub fn lighthouse_database<P: AsRef<Path>>(
         hot_path: P,
         cold_path: P,
@@ -38,12 +52,19 @@ impl<E: EthSpec> BeaconDataSource<E> {
         Ok(Self { store, split_slot })
     }
 
+    /// Returns the latest known state (i.e., highest slot).
     pub fn get_latest_state(&self) -> Result<BeaconState<E>, String> {
         self.store
             .load_cold_state_by_slot(self.split_slot)
             .map_err(|e| format!("Unable to read split slot state: {:?}", e))
     }
 
+    /// Returns block roots in the range of `start_epoch` to `end_epoch`. The return roots will have
+    /// the following properties:
+    ///
+    /// - Ascending slot order (i.e., earlier to latest blocks).
+    /// - Skip-slots are *not* included as duplicate roots, there might be any number of slots
+    ///     between one block root and the next.
     pub fn block_roots_in_range(
         &self,
         start_epoch: Epoch,
@@ -74,12 +95,14 @@ impl<E: EthSpec> BeaconDataSource<E> {
         Ok(block_roots)
     }
 
+    /// Get a block from the DB.
     pub fn get_block(&self, root: &Hash256) -> Result<Option<SignedBeaconBlock<E>>, String> {
         self.store
             .get_item(root)
             .map_err(|e| format!("Failed to get block from store: {:?}", e))
     }
 
+    /// Get a state with the given `slot` from the canonical chain.
     pub fn get_state_by_slot(&self, slot: Slot) -> Result<BeaconState<E>, String> {
         self.store
             .load_cold_state_by_slot(slot)
