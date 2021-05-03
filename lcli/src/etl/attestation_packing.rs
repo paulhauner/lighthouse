@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use types::{Epoch, EthSpec, Graffiti, SignedBeaconBlock, Slot};
+use types::{Epoch, EthSpec, Graffiti, Slot};
 
 type CommitteePosition = usize;
 type Committee = u64;
@@ -40,7 +40,6 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
         DEFAULT_SLOTS_PER_RESTORE_POINT,
         spec.clone(),
     )?;
-    let store = beacon_data_source.store.clone();
 
     eprintln!(
         "Collecting {} epochs of blocks",
@@ -60,10 +59,9 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
 
     let mut current_epoch = None;
     for &block_root in &block_roots {
-        let signed_block = store
-            .get_item::<SignedBeaconBlock<T>>(&block_root)
-            .expect("failed to get block from store")
-            .expect("block is not in store");
+        let signed_block = beacon_data_source
+            .get_block(&block_root)?
+            .ok_or_else(|| format!("Unable to find block {}", block_root))?;
         let block = &signed_block.message;
 
         let block_epoch = block.slot.epoch(T::slots_per_epoch());

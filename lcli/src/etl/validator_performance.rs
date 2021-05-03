@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use types::{BeaconState, Epoch, EthSpec, SignedBeaconBlock};
+use types::{BeaconState, Epoch, EthSpec};
 
 #[derive(Default, Clone, Debug)]
 struct ValidatorPerformance {
@@ -42,10 +42,9 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
         DEFAULT_SLOTS_PER_RESTORE_POINT,
         spec.clone(),
     )?;
-    let store = beacon_data_source.store.clone();
 
-    let split_state = beacon_data_source.split_slot_state()?;
-    let mut perfs = vec![ValidatorPerformance::default(); split_state.validators.len()];
+    let latest_state = beacon_data_source.get_latest_state()?;
+    let mut perfs = vec![ValidatorPerformance::default(); latest_state.validators.len()];
 
     eprintln!(
         "Collecting {} epochs of blocks",
@@ -57,12 +56,11 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
     let blocks = block_roots
         .iter()
         .map(|root| {
-            store
-                .get_item::<SignedBeaconBlock<T>>(&root)
-                .expect("failed to get block from store")
-                .expect("block is not in store")
+            beacon_data_source
+                .get_block(root)?
+                .ok_or_else(|| format!("Unable to find block {}", root))
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, _>>()?;
 
     if blocks.is_empty() {
         return Err("Query did not return any blocks".to_string());
@@ -70,9 +68,8 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
 
     eprintln!("Starting replay of {} blocks", blocks.len());
 
-    let mut state = store
-        .load_cold_state_by_slot(blocks.first().expect("no blocks to apply").message.slot - 1)
-        .expect("error reading pre state");
+    let mut state = beacon_data_source
+        .get_state_by_slot(blocks.first().expect("no blocks to apply").message.slot - 1)?;
 
     let state_root_from_prev_block = |i: usize, state: &BeaconState<T>| {
         if i > 0 {

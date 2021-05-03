@@ -2,13 +2,13 @@ use environment::null_logger;
 use std::path::Path;
 use std::sync::Arc;
 use store::{iter::BlockRootsIterator, HotColdDB, LevelDB, StoreConfig};
-use types::{BeaconState, ChainSpec, Epoch, EthSpec, Hash256, Slot};
+use types::{BeaconState, ChainSpec, Epoch, EthSpec, Hash256, SignedBeaconBlock, Slot};
 
 pub use store::config::DEFAULT_SLOTS_PER_RESTORE_POINT;
 
 pub struct BeaconDataSource<E: EthSpec> {
-    pub store: Arc<HotColdDB<E, LevelDB<E>, LevelDB<E>>>,
-    pub split_slot: Slot,
+    store: Arc<HotColdDB<E, LevelDB<E>, LevelDB<E>>>,
+    split_slot: Slot,
 }
 
 impl<E: EthSpec> BeaconDataSource<E> {
@@ -38,7 +38,7 @@ impl<E: EthSpec> BeaconDataSource<E> {
         Ok(Self { store, split_slot })
     }
 
-    pub fn split_slot_state(&self) -> Result<BeaconState<E>, String> {
+    pub fn get_latest_state(&self) -> Result<BeaconState<E>, String> {
         self.store
             .load_cold_state_by_slot(self.split_slot)
             .map_err(|e| format!("Unable to read split slot state: {:?}", e))
@@ -49,7 +49,7 @@ impl<E: EthSpec> BeaconDataSource<E> {
         start_epoch: Epoch,
         end_epoch: Epoch,
     ) -> Result<Vec<Hash256>, String> {
-        let split_state = self.split_slot_state()?;
+        let split_state = self.get_latest_state()?;
 
         let latest_known_epoch = self.split_slot.epoch(E::slots_per_epoch());
 
@@ -72,5 +72,17 @@ impl<E: EthSpec> BeaconDataSource<E> {
         block_roots.reverse();
 
         Ok(block_roots)
+    }
+
+    pub fn get_block(&self, root: &Hash256) -> Result<Option<SignedBeaconBlock<E>>, String> {
+        self.store
+            .get_item(root)
+            .map_err(|e| format!("Failed to get block from store: {:?}", e))
+    }
+
+    pub fn get_state_by_slot(&self, slot: Slot) -> Result<BeaconState<E>, String> {
+        self.store
+            .load_cold_state_by_slot(slot)
+            .map_err(|e| format!("Failed to get state from store: {:?}", e))
     }
 }

@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use types::{Epoch, EthSpec, Graffiti, Hash256, SignedBeaconBlock, Slot};
+use types::{Epoch, EthSpec, Graffiti, Hash256, Slot};
 
 pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
     let hot_path: PathBuf = clap_utils::parse_required(matches, "chain-db")?;
@@ -30,7 +30,6 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
         DEFAULT_SLOTS_PER_RESTORE_POINT,
         spec.clone(),
     )?;
-    let store = beacon_data_source.store.clone();
 
     eprintln!(
         "Collecting {} epochs of blocks",
@@ -58,10 +57,9 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
     let mut proposers: HashMap<Hash256, BlockInfo> = HashMap::new();
 
     for block_root in block_roots {
-        let block = store
-            .get_item::<SignedBeaconBlock<T>>(&block_root)
-            .expect("failed to get block from store")
-            .expect("block is not in store");
+        let block = beacon_data_source
+            .get_block(&block_root)?
+            .ok_or_else(|| format!("Unable to find block {}", block_root))?;
 
         proposers.insert(
             block_root,
