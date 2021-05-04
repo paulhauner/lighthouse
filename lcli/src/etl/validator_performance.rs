@@ -9,14 +9,33 @@ use types::{BeaconState, Epoch, EthSpec};
 
 #[derive(Default, Clone, Debug)]
 struct ValidatorPerformance {
+    /// The validator had an attestation included on-chain.
     pub attestation_hits: usize,
+    /// Inverse of `attestation_hits`.
     pub attestation_misses: usize,
+    /// The validator had an attestation included on-chain which matched the "head" vote.
     pub head_attestation_hits: usize,
+    /// Inverse of `head_attestation_hits`.
     pub head_attestation_misses: usize,
+    /// The validator had an attestation included on-chain which matched the "target" vote.
     pub target_attestation_hits: usize,
+    /// Inverse of `target_attestation_hits`.
     pub target_attestation_misses: usize,
+    /// The validator achieved a `head_attestation_hits` point when the first slot of the epoch was
+    /// a skip-slot.
+    ///
+    /// This is generally *not useful*, it was used to try and debug late blocks on mainnet.
     pub first_slot_head_attester_when_first_slot_empty: usize,
+    /// The validator achieved a `head_attestation_hits` point when the first slot of the epoch was
+    /// *not* a skip-slot.
+    ///
+    /// This is generally *not useful*, it was used to try and debug late blocks on mainnet.
     pub first_slot_head_attester_when_first_slot_not_empty: usize,
+    /// Set to `Some(true)` if the validator was active (i.e., eligible to attest) in all observed
+    /// states.
+    pub always_active: Option<bool>,
+    /// A map of `inclusion_distance -> count`, indicating how many times the validator achieved
+    /// each inclusion distance.
     pub delays: HashMap<u64, u64>,
 }
 
@@ -99,9 +118,13 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
 
                 let prev_epoch_target_slot =
                     state.previous_epoch().start_slot(T::slots_per_epoch());
-                let penultimate_epoch_end_slot = prev_epoch_target_slot - 1;
-                let first_slot_empty = state.get_block_root(prev_epoch_target_slot).unwrap()
-                    == state.get_block_root(penultimate_epoch_end_slot).unwrap();
+                let penultimate_epoch_end_slot = prev_epoch_target_slot.saturating_sub(1_u64);
+                let first_slot_empty = state
+                    .get_block_root(prev_epoch_target_slot)
+                    .map_err(|e| format!("Unable to get prev epoch block root: {:?}", e))?
+                    == state
+                        .get_block_root(penultimate_epoch_end_slot)
+                        .map_err(|e| format!("Unable to get penultimate block root: {:?}", e))?;
 
                 let first_slot_attesters = {
                     let committee_count = state
@@ -122,6 +145,10 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
                 for (i, s) in summary.statuses.into_iter().enumerate() {
                     let perf = perfs.get_mut(i).expect("no perf for validator");
                     if s.is_active_in_previous_epoch {
+                        if perf.always_active.is_none() {
+                            perf.always_active = Some(true);
+                        }
+
                         if s.is_previous_epoch_attester {
                             perf.attestation_hits += 1;
 
@@ -151,6 +178,8 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
                         } else {
                             perf.attestation_misses += 1;
                         }
+                    } else {
+                        perf.always_active = Some(false);
                     }
                 }
             }
@@ -178,6 +207,7 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
         target_attestation_hits,\
         target_attestation_misses,\
         delay_avg,\
+        always_active,\
         first_slot_head_attester_when_first_slot_empty,\
         first_slot_head_attester_when_first_slot_not_empty\n"
     )
@@ -193,7 +223,7 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
 
         write!(
             file,
-            "{},{},{},{},{},{},{},{},{},{}\n",
+            "{},{},{},{},{},{},{},{},{},{},{}\n",
             i,
             perf.attestation_hits,
             perf.attestation_misses,
@@ -206,6 +236,7 @@ pub fn run<T: EthSpec>(matches: &ArgMatches) -> Result<(), String> {
             } else {
                 sum as f64 / count as f64
             },
+            perf.always_active.unwrap_or(false),
             perf.first_slot_head_attester_when_first_slot_empty,
             perf.first_slot_head_attester_when_first_slot_not_empty
         )
