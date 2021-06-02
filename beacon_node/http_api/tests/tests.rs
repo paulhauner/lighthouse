@@ -8,7 +8,7 @@ use discv5::enr::{CombinedKey, EnrBuilder};
 use environment::null_logger;
 use eth2::Error;
 use eth2::StatusCode;
-use eth2::{types::*, BeaconNodeHttpClient};
+use eth2::{types::*, BeaconNodeHttpClient, Timeouts};
 use eth2_libp2p::{
     rpc::methods::MetaData,
     types::{EnrBitfield, SyncState},
@@ -208,7 +208,7 @@ impl ApiTester {
                 listening_socket.port()
             ))
             .unwrap(),
-            SECONDS_PER_SLOT,
+            Timeouts::default(SECONDS_PER_SLOT),
         );
 
         Self {
@@ -316,7 +316,7 @@ impl ApiTester {
                 listening_socket.port()
             ))
             .unwrap(),
-            SECONDS_PER_SLOT,
+            Timeouts::default(SECONDS_PER_SLOT),
         );
 
         Self {
