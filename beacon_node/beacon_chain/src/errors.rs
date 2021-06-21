@@ -113,6 +113,14 @@ pub enum BeaconChainError {
         state_epoch: Epoch,
         shuffling_epoch: Epoch,
     },
+    InconsistentForwardsIter {
+        request_slot: Slot,
+        slot: Slot,
+    },
+    InvalidReorgSlotIter {
+        old_slot: Slot,
+        new_slot: Slot,
+    },
 }
 
 easy_from_to!(SlotProcessingError, BeaconChainError);

@@ -17,6 +17,7 @@ use beacon_chain::{
     observed_operations::ObservationOutcome,
     validator_monitor::{get_block_delay_ms, timestamp_now},
     AttestationError as AttnError, BeaconChain, BeaconChainError, BeaconChainTypes,
+    WhenSlotSkipped,
 };
 use block_id::BlockId;
 use eth2::types::{self as api_types, ValidatorId};
@@ -751,7 +752,7 @@ pub fn serve<T: BeaconChainTypes>(
                 let block = BlockId::from_root(root).block(&chain)?;
 
                 let canonical = chain
-                    .block_root_at_slot(block.slot())
+                    .block_root_at_slot(block.slot(), WhenSlotSkipped::None)
                     .map_err(warp_utils::reject::beacon_chain_error)?
                     .map_or(false, |canonical| root == canonical);
 
@@ -1253,7 +1254,6 @@ pub fn serve<T: BeaconChainTypes>(
 
     // GET config/fork_schedule
     let get_config_fork_schedule = config_path
-        .clone()
         .and(warp::path("fork_schedule"))
         .and(warp::path::end())
         .and(chain_filter.clone())
@@ -1267,7 +1267,6 @@ pub fn serve<T: BeaconChainTypes>(
 
     // GET config/spec
     let get_config_spec = config_path
-        .clone()
         .and(warp::path("spec"))
         .and(warp::path::end())
         .and(chain_filter.clone())
@@ -1283,7 +1282,6 @@ pub fn serve<T: BeaconChainTypes>(
 
     // GET config/deposit_contract
     let get_config_deposit_contract = config_path
-        .clone()
         .and(warp::path("deposit_contract"))
         .and(warp::path::end())
         .and(chain_filter.clone())
@@ -1879,10 +1877,26 @@ pub fn serve<T: BeaconChainTypes>(
              chain: Arc<BeaconChain<T>>| {
                 blocking_json_task(move || {
                     for subscription in &subscriptions {
-                        chain
-                            .validator_monitor
-                            .write()
-                            .auto_register_local_validator(subscription.validator_index);
+                        // Assign the result from the read to a separate variable, to avoid a Rust
+                        // quirk where a read-lock obtained inside an `if` statement is for the
+                        // execution inside it.
+                        //
+                        // Checking the read-lock first helps avoid lengthy waits for the
+                        // write-lock. Although another thread may add the validator between
+                        // dropping the read-lock and obtaining the write-lock, there's no harm in
+                        // registering the same validator twice.
+                        let should_register = {
+                            let validator_monitor = chain.validator_monitor.read();
+                            validator_monitor.auto_register_enabled()
+                                && !validator_monitor
+                                    .contains_validator(subscription.validator_index)
+                        };
+                        if should_register {
+                            chain
+                                .validator_monitor
+                                .write()
+                                .auto_register_local_validator(subscription.validator_index);
+                        }
 
                         let subscription = api_types::ValidatorSubscription {
                             validator_index: subscription.validator_index,
@@ -2151,6 +2165,9 @@ pub fn serve<T: BeaconChainTypes>(
                                 }
                                 api_types::EventTopic::FinalizedCheckpoint => {
                                     event_handler.subscribe_finalized()
+                                }
+                                api_types::EventTopic::ChainReorg => {
+                                    event_handler.subscribe_reorgs()
                                 }
                             };
 

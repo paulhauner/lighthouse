@@ -353,8 +353,7 @@ impl<T: EthSpec> ValidatorMonitor<T> {
                             "matched_head" => summary.is_previous_epoch_head_attester,
                             "epoch" => prev_epoch,
                             "validator" => id,
-
-                        )
+                        );
                     } else if summary.is_active_in_previous_epoch
                         && !summary.is_previous_epoch_attester
                     {
@@ -364,6 +363,11 @@ impl<T: EthSpec> ValidatorMonitor<T> {
                             "epoch" => prev_epoch,
                             "validator" => id,
                         )
+                    } else if !summary.is_active_in_previous_epoch {
+                        // Monitored validator is not active, due to awaiting activation
+                        // or being exited/withdrawn. Do not attempt to report on its
+                        // attestations.
+                        continue;
                     }
 
                     if summary.is_previous_epoch_attester {
@@ -434,6 +438,16 @@ impl<T: EthSpec> ValidatorMonitor<T> {
         self.indices
             .get(&validator_index)
             .and_then(|pubkey| self.validators.get(pubkey))
+    }
+
+    /// Return `true` if the `validator_index` has been registered with `self`.
+    pub fn contains_validator(&self, validator_index: u64) -> bool {
+        self.indices.contains_key(&validator_index)
+    }
+
+    /// Return `true` if the automatic validator registration is enabled.
+    pub fn auto_register_enabled(&self) -> bool {
+        self.auto_register
     }
 
     /// Returns the number of validators monitored by `self`.

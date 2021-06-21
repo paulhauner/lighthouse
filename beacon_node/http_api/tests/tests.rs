@@ -1,8 +1,9 @@
 #![cfg(not(debug_assertions))] // Tests are too slow in debug.
+#![recursion_limit = "256"]
 
 use beacon_chain::{
     test_utils::{AttestationStrategy, BeaconChainHarness, BlockStrategy, EphemeralHarnessType},
-    BeaconChain, StateSkipConfig, MAXIMUM_GOSSIP_CLOCK_DISPARITY,
+    BeaconChain, StateSkipConfig, WhenSlotSkipped, MAXIMUM_GOSSIP_CLOCK_DISPARITY,
 };
 use discv5::enr::{CombinedKey, EnrBuilder};
 use environment::null_logger;
@@ -61,6 +62,7 @@ struct ApiTester {
     chain: Arc<BeaconChain<EphemeralHarnessType<E>>>,
     client: BeaconNodeHttpClient,
     next_block: SignedBeaconBlock<E>,
+    reorg_block: SignedBeaconBlock<E>,
     attestations: Vec<Attestation<E>>,
     attester_slashing: AttesterSlashing<E>,
     proposer_slashing: ProposerSlashing,
@@ -104,6 +106,10 @@ impl ApiTester {
         );
 
         let (next_block, _next_state) =
+            harness.make_block(head.beacon_state.clone(), harness.chain.slot().unwrap());
+
+        // `make_block` adds random graffiti, so this will produce an alternate block
+        let (reorg_block, _reorg_state) =
             harness.make_block(head.beacon_state.clone(), harness.chain.slot().unwrap());
 
         let head_state_root = head.beacon_state_root();
@@ -215,6 +221,7 @@ impl ApiTester {
             chain,
             client,
             next_block,
+            reorg_block,
             attestations,
             attester_slashing,
             proposer_slashing,
@@ -238,6 +245,10 @@ impl ApiTester {
         let head = harness.chain.head().unwrap();
 
         let (next_block, _next_state) =
+            harness.make_block(head.beacon_state.clone(), harness.chain.slot().unwrap());
+
+        // `make_block` adds random graffiti, so this will produce an alternate block
+        let (reorg_block, _reorg_state) =
             harness.make_block(head.beacon_state.clone(), harness.chain.slot().unwrap());
 
         let head_state_root = head.beacon_state_root();
@@ -323,6 +334,7 @@ impl ApiTester {
             chain,
             client,
             next_block,
+            reorg_block,
             attestations,
             attester_slashing,
             proposer_slashing,
@@ -794,7 +806,10 @@ impl ApiTester {
                     .current_justified_checkpoint
                     .root,
             ),
-            BlockId::Slot(slot) => self.chain.block_root_at_slot(slot).unwrap(),
+            BlockId::Slot(slot) => self
+                .chain
+                .block_root_at_slot(slot, WhenSlotSkipped::None)
+                .unwrap(),
             BlockId::Root(root) => Some(root),
         }
     }
@@ -815,14 +830,21 @@ impl ApiTester {
                 .unwrap()
                 .map(|res| res.data);
 
-            let root = self.chain.block_root_at_slot(slot).unwrap();
+            let root = self
+                .chain
+                .block_root_at_slot(slot, WhenSlotSkipped::None)
+                .unwrap();
 
             if root.is_none() && result.is_none() {
                 continue;
             }
 
             let root = root.unwrap();
-            let block = self.chain.block_at_slot(slot).unwrap().unwrap();
+            let block = self
+                .chain
+                .block_at_slot(slot, WhenSlotSkipped::Prev)
+                .unwrap()
+                .unwrap();
             let header = BlockHeaderData {
                 root,
                 canonical: true,
@@ -903,7 +925,7 @@ impl ApiTester {
             let block_root = block_root_opt.unwrap();
             let canonical = self
                 .chain
-                .block_root_at_slot(block.slot())
+                .block_root_at_slot(block.slot(), WhenSlotSkipped::None)
                 .unwrap()
                 .map_or(false, |canonical| block_root == canonical);
 
@@ -1535,7 +1557,10 @@ impl ApiTester {
 
                 let dependent_root = self
                     .chain
-                    .root_at_slot((epoch - 1).start_slot(E::slots_per_epoch()) - 1)
+                    .block_root_at_slot(
+                        (epoch - 1).start_slot(E::slots_per_epoch()) - 1,
+                        WhenSlotSkipped::Prev,
+                    )
                     .unwrap()
                     .unwrap_or(self.chain.head_beacon_block_root().unwrap());
 
@@ -1607,7 +1632,10 @@ impl ApiTester {
 
             let dependent_root = self
                 .chain
-                .root_at_slot(epoch.start_slot(E::slots_per_epoch()) - 1)
+                .block_root_at_slot(
+                    epoch.start_slot(E::slots_per_epoch()) - 1,
+                    WhenSlotSkipped::Prev,
+                )
                 .unwrap()
                 .unwrap_or(self.chain.head_beacon_block_root().unwrap());
 
@@ -2189,7 +2217,7 @@ impl ApiTester {
             current_duty_dependent_root,
             previous_duty_dependent_root: self
                 .chain
-                .root_at_slot(current_slot - E::slots_per_epoch())
+                .block_root_at_slot(current_slot - E::slots_per_epoch(), WhenSlotSkipped::Prev)
                 .unwrap()
                 .unwrap(),
             epoch_transition: true,
@@ -2198,7 +2226,7 @@ impl ApiTester {
         let expected_finalized = EventKind::FinalizedCheckpoint(SseFinalizedCheckpoint {
             block: self
                 .chain
-                .root_at_slot(next_slot - finalization_distance)
+                .block_root_at_slot(next_slot - finalization_distance, WhenSlotSkipped::Prev)
                 .unwrap()
                 .unwrap(),
             state: self
@@ -2219,6 +2247,36 @@ impl ApiTester {
             block_events.as_slice(),
             &[expected_block, expected_finalized, expected_head]
         );
+
+        // Test a reorg event
+        let mut chain_reorg_event_future = self
+            .client
+            .get_events::<E>(&[EventTopic::ChainReorg])
+            .await
+            .unwrap();
+
+        let expected_reorg = EventKind::ChainReorg(SseChainReorg {
+            slot: self.next_block.slot(),
+            depth: 1,
+            old_head_block: self.next_block.canonical_root(),
+            old_head_state: self.next_block.state_root(),
+            new_head_block: self.reorg_block.canonical_root(),
+            new_head_state: self.reorg_block.state_root(),
+            epoch: self.next_block.slot().epoch(E::slots_per_epoch()),
+        });
+
+        self.client
+            .post_beacon_blocks(&self.reorg_block)
+            .await
+            .unwrap();
+
+        let reorg_event = poll_events(
+            &mut chain_reorg_event_future,
+            1,
+            Duration::from_millis(10000),
+        )
+        .await;
+        assert_eq!(reorg_event.as_slice(), &[expected_reorg]);
 
         self
     }
@@ -2279,7 +2337,7 @@ async fn poll_events<S: Stream<Item = Result<EventKind<T>, eth2::Error>> + Unpin
     };
 
     tokio::select! {
-            _ = collect_stream_fut => {return events}
+            _ = collect_stream_fut => {events}
             _ = tokio::time::sleep(timeout) => { return events; }
     }
 }
