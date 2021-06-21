@@ -208,7 +208,7 @@ impl ApiTester {
                 listening_socket.port()
             ))
             .unwrap(),
-            Timeouts::default(SECONDS_PER_SLOT),
+            Timeouts::set_all(Duration::from_secs(SECONDS_PER_SLOT)),
         );
 
         Self {
@@ -316,7 +316,7 @@ impl ApiTester {
                 listening_socket.port()
             ))
             .unwrap(),
-            Timeouts::default(SECONDS_PER_SLOT),
+            Timeouts::set_all(Duration::from_secs(SECONDS_PER_SLOT)),
         );
 
         Self {
