@@ -3414,6 +3414,7 @@ dependencies = [
  "eth2_libp2p",
  "eth2_network_config",
  "eth2_ssz",
+ "eth2_ssz_types",
  "eth2_wallet",
  "futures 0.3.14",
  "genesis",

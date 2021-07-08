@@ -4,10 +4,12 @@ use eth2_network_config::Eth2NetworkConfig;
 use eth2_wallet::bip39::Seed;
 use eth2_wallet::{recover_validator_secret_from_mnemonic, KeyType};
 use ssz::Encode;
+use ssz_types::VariableList;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use types::{BeaconState, EthSpec};
+use tree_hash::TreeHash;
+use types::{BeaconState, EthSpec, Unsigned};
 
 pub fn run<T: EthSpec>(testnet_dir: PathBuf, matches: &ArgMatches) -> Result<(), String> {
     let path = matches
@@ -19,6 +21,8 @@ pub fn run<T: EthSpec>(testnet_dir: PathBuf, matches: &ArgMatches) -> Result<(),
     let mnemonic_phrase = matches
         .value_of("mnemonic")
         .ok_or("mnemonic not specified")?;
+
+    let truncate_len: Option<usize> = clap_utils::parse_optional(matches, "truncate")?;
 
     let eth2_network_config = Eth2NetworkConfig::load(testnet_dir)?;
     let spec = &eth2_network_config.chain_spec::<T>()?;
@@ -34,6 +38,16 @@ pub fn run<T: EthSpec>(testnet_dir: PathBuf, matches: &ArgMatches) -> Result<(),
         BeaconState::from_ssz_bytes(&ssz, spec)
             .map_err(|e| format!("Unable to decode SSZ: {:?}", e))?
     };
+
+    state.as_base().expect("does not yet support altair states");
+
+    if let Some(len) = truncate_len {
+        *state.validators_mut() = truncate_variable_list(state.validators().clone(), len);
+        *state.balances_mut() = truncate_variable_list(state.balances().clone(), len);
+    }
+    *state.genesis_validators_root_mut() = state.validators().tree_hash_root();
+    *state.eth1_deposit_index_mut() = state.validators().len() as u64;
+    state.eth1_data_mut().deposit_count = state.validators().len() as u64;
 
     let mnemonic = mnemonic_from_phrase(mnemonic_phrase)?;
     let seed = Seed::new(&mnemonic, "");
@@ -57,4 +71,13 @@ pub fn run<T: EthSpec>(testnet_dir: PathBuf, matches: &ArgMatches) -> Result<(),
         .map_err(|e| format!("Unable to write to file: {}", e))?;
 
     Ok(())
+}
+
+pub fn truncate_variable_list<T, N: Unsigned>(
+    original: VariableList<T, N>,
+    len: usize,
+) -> VariableList<T, N> {
+    let mut output = Vec::from(original);
+    output.truncate(len);
+    output.into()
 }

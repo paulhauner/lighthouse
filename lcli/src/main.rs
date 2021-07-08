@@ -260,6 +260,14 @@ fn main() {
                             orient excite play baby",
                         )
                         .help("The mnemonic for key derivation."),
+                )
+                .arg(
+                    Arg::with_name("truncate")
+                        .long("truncate")
+                        .value_name("VALIDATOR_COUNT")
+                        .takes_value(true)
+                        .required(false)
+                        .help("A new length for the validators array."),
                 ),
         )
         .subcommand(
