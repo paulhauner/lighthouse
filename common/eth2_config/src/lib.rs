@@ -117,3 +117,5 @@ define_net!(
     "altair-devnet-0",
     true
 );
+
+define_net!(ad0_beta, include_ad0_beta_file, "ad0-beta", true);
