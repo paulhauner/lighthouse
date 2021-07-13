@@ -13,6 +13,7 @@ mod key_cache;
 mod notifier;
 mod validator_store;
 
+mod doppelganger_service;
 pub mod http_api;
 
 pub use cli::cli_app;
@@ -23,6 +24,7 @@ use monitoring_api::{MonitoringHttpClient, ProcessType};
 use crate::beacon_node_fallback::{
     start_fallback_updater_service, BeaconNodeFallback, CandidateBeaconNode, RequireSynced,
 };
+use crate::doppelganger_service::DoppelgangerService;
 use account_utils::validator_definitions::ValidatorDefinitions;
 use attestation_service::{AttestationService, AttestationServiceBuilder};
 use block_service::{BlockService, BlockServiceBuilder};
@@ -30,7 +32,7 @@ use clap::ArgMatches;
 use duties_service::DutiesService;
 use environment::RuntimeContext;
 use eth2::types::StateId;
-use eth2::{reqwest::ClientBuilder, BeaconNodeHttpClient, StatusCode};
+use eth2::{reqwest::ClientBuilder, BeaconNodeHttpClient, StatusCode, Timeouts};
 use fork_service::{ForkService, ForkServiceBuilder};
 use http_api::ApiSecret;
 use initialized_validators::InitializedValidators;
@@ -57,8 +59,15 @@ const RETRY_DELAY: Duration = Duration::from_secs(2);
 /// The time between polls when waiting for genesis.
 const WAITING_FOR_GENESIS_POLL_TIME: Duration = Duration::from_secs(12);
 
-/// The global timeout for HTTP requests to the beacon node.
-const HTTP_TIMEOUT: Duration = Duration::from_secs(12);
+/// Specific timeout constants for HTTP requests involved in different validator duties.
+/// This can help ensure that proper endpoint fallback occurs.
+const HTTP_ATTESTATION_TIMEOUT_QUOTIENT: u32 = 4;
+const HTTP_ATTESTER_DUTIES_TIMEOUT_QUOTIENT: u32 = 4;
+const HTTP_LIVENESS_TIMEOUT_QUOTIENT: u32 = 4;
+const HTTP_PROPOSAL_TIMEOUT_QUOTIENT: u32 = 2;
+const HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT: u32 = 4;
+
+const DOPPELGANGER_SERVICE_NAME: &str = "doppelganger";
 
 #[derive(Clone)]
 pub struct ProductionValidatorClient<T: EthSpec> {
@@ -67,7 +76,8 @@ pub struct ProductionValidatorClient<T: EthSpec> {
     fork_service: ForkService<SystemTimeSlotClock, T>,
     block_service: BlockService<SystemTimeSlotClock, T>,
     attestation_service: AttestationService<SystemTimeSlotClock, T>,
-    validator_store: ValidatorStore<SystemTimeSlotClock, T>,
+    doppelganger_service: Option<Arc<DoppelgangerService>>,
+    validator_store: Arc<ValidatorStore<SystemTimeSlotClock, T>>,
     http_api_listen_addr: Option<SocketAddr>,
     http_metrics_ctx: Option<Arc<http_metrics::Context<T>>>,
     config: Config,
@@ -222,18 +232,46 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
                 })?;
         }
 
+        let last_beacon_node_index = config
+            .beacon_nodes
+            .len()
+            .checked_sub(1)
+            .ok_or_else(|| "No beacon nodes defined.".to_string())?;
+
         let beacon_nodes: Vec<BeaconNodeHttpClient> = config
             .beacon_nodes
-            .clone()
-            .into_iter()
-            .map(|url| {
+            .iter()
+            .enumerate()
+            .map(|(i, url)| {
+                let slot_duration = Duration::from_secs(context.eth2_config.spec.seconds_per_slot);
+
                 let beacon_node_http_client = ClientBuilder::new()
-                    .timeout(HTTP_TIMEOUT)
+                    // Set default timeout to be the full slot duration.
+                    .timeout(slot_duration)
                     .build()
                     .map_err(|e| format!("Unable to build HTTP client: {:?}", e))?;
+
+                // Use quicker timeouts if a fallback beacon node exists.
+                let timeouts = if i < last_beacon_node_index && !config.use_long_timeouts {
+                    info!(
+                        log,
+                        "Fallback endpoints are available, using optimized timeouts.";
+                    );
+                    Timeouts {
+                        attestation: slot_duration / HTTP_ATTESTATION_TIMEOUT_QUOTIENT,
+                        attester_duties: slot_duration / HTTP_ATTESTER_DUTIES_TIMEOUT_QUOTIENT,
+                        liveness: slot_duration / HTTP_LIVENESS_TIMEOUT_QUOTIENT,
+                        proposal: slot_duration / HTTP_PROPOSAL_TIMEOUT_QUOTIENT,
+                        proposer_duties: slot_duration / HTTP_PROPOSER_DUTIES_TIMEOUT_QUOTIENT,
+                    }
+                } else {
+                    Timeouts::set_all(slot_duration)
+                };
+
                 Ok(BeaconNodeHttpClient::from_components(
-                    url,
+                    url.clone(),
                     beacon_node_http_client,
+                    timeouts,
                 ))
             })
             .collect::<Result<Vec<BeaconNodeHttpClient>, String>>()?;
@@ -244,7 +282,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             .map(CandidateBeaconNode::new)
             .collect();
 
-        // Set the count for beacon node fallbacks excluding the primary beacon node
+        // Set the count for beacon node fallbacks excluding the primary beacon node.
         set_gauge(
             &http_metrics::metrics::ETH2_FALLBACK_CONFIGURED,
             num_nodes.saturating_sub(1) as i64,
@@ -282,14 +320,27 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             .log(log.clone())
             .build()?;
 
-        let validator_store: ValidatorStore<SystemTimeSlotClock, T> = ValidatorStore::new(
-            validators,
-            slashing_protection,
-            genesis_validators_root,
-            context.eth2_config.spec.clone(),
-            fork_service.clone(),
-            log.clone(),
-        );
+        let doppelganger_service = if config.enable_doppelganger_protection {
+            Some(Arc::new(DoppelgangerService::new(
+                context
+                    .service_context(DOPPELGANGER_SERVICE_NAME.into())
+                    .log()
+                    .clone(),
+            )))
+        } else {
+            None
+        };
+
+        let validator_store: Arc<ValidatorStore<SystemTimeSlotClock, T>> =
+            Arc::new(ValidatorStore::new(
+                validators,
+                slashing_protection,
+                genesis_validators_root,
+                context.eth2_config.spec.clone(),
+                fork_service.clone(),
+                doppelganger_service.clone(),
+                log.clone(),
+            ));
 
         info!(
             log,
@@ -308,7 +359,6 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         let duties_service = Arc::new(DutiesService {
             attesters: <_>::default(),
             proposers: <_>::default(),
-            indices: <_>::default(),
             slot_clock: slot_clock.clone(),
             beacon_nodes: beacon_nodes.clone(),
             validator_store: validator_store.clone(),
@@ -338,7 +388,7 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
 
         let attestation_service = AttestationServiceBuilder::new()
             .duties_service(duties_service.clone())
-            .slot_clock(slot_clock)
+            .slot_clock(slot_clock.clone())
             .validator_store(validator_store.clone())
             .beacon_nodes(beacon_nodes.clone())
             .runtime_context(context.service_context("attestation".into()))
@@ -350,12 +400,16 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
         // of making too many changes this close to genesis (<1 week).
         wait_for_genesis(&beacon_nodes, genesis_time, &context).await?;
 
+        // Ensure all validators are registered in doppelganger protection.
+        validator_store.register_all_in_doppelganger_protection_if_enabled()?;
+
         Ok(Self {
             context,
             duties_service,
             fork_service,
             block_service,
             attestation_service,
+            doppelganger_service,
             validator_store,
             config,
             http_api_listen_addr: None,
@@ -387,6 +441,20 @@ impl<T: EthSpec> ProductionValidatorClient<T> {
             .clone()
             .start_update_service(&self.context.eth2_config.spec)
             .map_err(|e| format!("Unable to start attestation service: {}", e))?;
+
+        if let Some(doppelganger_service) = self.doppelganger_service.clone() {
+            DoppelgangerService::start_update_service(
+                doppelganger_service,
+                self.context
+                    .service_context(DOPPELGANGER_SERVICE_NAME.into()),
+                self.validator_store.clone(),
+                self.duties_service.beacon_nodes.clone(),
+                self.duties_service.slot_clock.clone(),
+            )
+            .map_err(|e| format!("Unable to start doppelganger service: {}", e))?
+        } else {
+            info!(log, "Doppelganger protection disabled.")
+        }
 
         spawn_notifier(self).map_err(|e| format!("Failed to start notifier: {}", e))?;
 

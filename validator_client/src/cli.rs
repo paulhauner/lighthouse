@@ -94,6 +94,13 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                       node is not synced.",
                 ),
         )
+        .arg(
+            Arg::with_name("use-long-timeouts")
+                .long("use-long-timeouts")
+                .help("If present, the validator client will use longer timeouts for requests \
+                        made to the beacon node. This flag is generally not recommended, \
+                        longer timeouts can cause missed duties when fallbacks are used.")
+        )
         // This overwrites the graffiti configured in the beacon node.
         .arg(
             Arg::with_name("graffiti")
@@ -195,5 +202,20 @@ pub fn cli_app<'a, 'b>() -> App<'a, 'b> {
                 validators, IP address and other personal information. Always use a HTTPS connection \
                 and never provide an untrusted URL.")
                 .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("enable-doppelganger-protection")
+                .long("enable-doppelganger-protection")
+                .value_name("ENABLE_DOPPELGANGER_PROTECTION")
+                .help("If this flag is set, Lighthouse will delay startup for three epochs and \
+                    monitor for messages on the network by any of the validators managed by this \
+                    client. This will result in three (possibly four) epochs worth of missed \
+                    attestations. If an attestation is detected during this period, it means it is \
+                    very likely that you are running a second validator client with the same keys. \
+                    This validator client will immediately shutdown if this is detected in order \
+                    to avoid potentially committing a slashable offense. Use this flag in order to \
+                    ENABLE this functionality, without this flag Lighthouse will begin attesting \
+                    immediately.")
+                .takes_value(false),
         )
 }

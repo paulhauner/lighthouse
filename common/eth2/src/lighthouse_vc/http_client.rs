@@ -211,7 +211,7 @@ impl ValidatorClientHttpClient {
     }
 
     /// `GET lighthouse/spec`
-    pub async fn get_lighthouse_spec(&self) -> Result<GenericResponse<YamlConfig>, Error> {
+    pub async fn get_lighthouse_spec(&self) -> Result<GenericResponse<ConfigAndPreset>, Error> {
         let mut path = self.server.full.clone();
 
         path.path_segments_mut()
@@ -250,6 +250,21 @@ impl ValidatorClientHttpClient {
             .push(&validator_pubkey.to_string());
 
         self.get_opt(path).await
+    }
+
+    /// `GET lighthouse/validators/doppelganger_status`
+    pub async fn get_lighthouse_validators_doppelganger(
+        &self,
+    ) -> Result<GenericResponse<Vec<DoppelgangerData>>, Error> {
+        let mut path = self.server.full.clone();
+
+        path.path_segments_mut()
+            .map_err(|()| Error::InvalidUrl(self.server.clone()))?
+            .push("lighthouse")
+            .push("validators")
+            .push("doppelganger_status");
+
+        self.get(path).await
     }
 
     /// `POST lighthouse/validators`
