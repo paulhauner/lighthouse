@@ -3,7 +3,7 @@
 //! succeed.
 
 use crate::check_synced::check_synced;
-use crate::http_metrics::metrics::{inc_counter_vec, ENDPOINT_ERRORS, ENDPOINT_REQUESTS};
+use crate::http_metrics::metrics::{self, inc_counter_vec, ENDPOINT_ERRORS, ENDPOINT_REQUESTS};
 use environment::RuntimeContext;
 use eth2::BeaconNodeHttpClient;
 use futures::future;
@@ -387,6 +387,9 @@ impl<T: SlotClock, E: EthSpec> BeaconNodeFallback<T, E> {
         let mut errors = vec![];
         let mut to_retry = vec![];
         let mut retry_unsynced = vec![];
+        let mut first_request_timer = Some(metrics::start_timer(
+            &metrics::ETH2_FALLBACK_FIRST_REQUEST_DELAY_SECONDS,
+        ));
 
         // Run `func` using a `candidate`, returning the value or capturing errors.
         //
@@ -395,6 +398,7 @@ impl<T: SlotClock, E: EthSpec> BeaconNodeFallback<T, E> {
         macro_rules! try_func {
             ($candidate: ident) => {{
                 inc_counter_vec(&ENDPOINT_REQUESTS, &[$candidate.beacon_node.as_ref()]);
+                first_request_timer.take().map(drop);
 
                 // There exists a race condition where `func` may be called when the candidate is
                 // actually not ready. We deem this an acceptable inefficiency.

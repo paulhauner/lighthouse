@@ -128,6 +128,10 @@ lazy_static::lazy_static! {
         "sync_eth2_fallback_connected",
         "Set to 1 if connected to atleast one synced eth2 fallback node, otherwise set to 0",
     );
+    pub static ref ETH2_FALLBACK_FIRST_REQUEST_DELAY_SECONDS: Result<Histogram> = try_create_histogram(
+        "eth2_fallback_first_request_delay_seconds",
+        "Time elapsed before the BN fallback mechanism makes the first request",
+    );
 }
 
 pub fn gather_prometheus_metrics<T: EthSpec>(
