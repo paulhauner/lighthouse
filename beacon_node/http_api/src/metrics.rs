@@ -33,4 +33,8 @@ lazy_static::lazy_static! {
         "http_api_block_broadcast_delay_times",
         "Time between start of the slot and when the block was broadcast"
     );
+    pub static ref HTTP_API_BLOCKING_TASK_WAIT_TIMES: Result<Histogram> = try_create_histogram(
+        "http_api_blocking_task_wait_times",
+        "Time spent waiting for a tokio blocking thread"
+    );
 }

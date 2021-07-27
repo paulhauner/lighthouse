@@ -1698,7 +1698,7 @@ pub fn serve<T: BeaconChainTypes>(
         .and(chain_filter.clone())
         .and_then(
             |query: api_types::ValidatorAttestationDataQuery, chain: Arc<BeaconChain<T>>| {
-                blocking_json_task(move || {
+                blocking_timed_json_task(move || {
                     let current_slot = chain
                         .slot()
                         .map_err(warp_utils::reject::beacon_chain_error)?;
@@ -2302,4 +2302,19 @@ fn publish_network_message<T: EthSpec>(
             e
         ))
     })
+}
+
+/// A convenience wrapper around `blocking_task` for use with `warp` JSON responses.
+async fn blocking_timed_json_task<F, T>(func: F) -> Result<warp::reply::Json, warp::Rejection>
+where
+    F: FnOnce() -> Result<T, warp::Rejection> + Send + 'static,
+    T: Serialize + Send + 'static,
+{
+    let timer = metrics::start_timer(&metrics::HTTP_API_BLOCKING_TASK_WAIT_TIMES);
+    blocking_task(|| {
+        drop(timer);
+        func()
+    })
+    .await
+    .map(|resp| warp::reply::json(&resp))
 }
