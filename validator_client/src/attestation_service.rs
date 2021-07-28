@@ -337,7 +337,7 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
         let attestation_data = self
             .beacon_nodes
             .first_success(RequireSynced::No, |beacon_node| async move {
-                let _timer = metrics::start_timer_vec(
+                let timer = metrics::start_timer_vec(
                     &metrics::ATTESTATION_SERVICE_TIMES,
                     &[metrics::ATTESTATIONS_HTTP_GET],
                 );
@@ -345,7 +345,10 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
                     .get_validator_attestation_data(slot, committee_index)
                     .await
                     .map_err(|e| format!("Failed to produce attestation data: {:?}", e))
-                    .map(|result| result.data)
+                    .map(|result| {
+                        drop(timer);
+                        result.data
+                    })
             })
             .await
             .map_err(|e| e.to_string())?;
