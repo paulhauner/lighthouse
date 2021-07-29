@@ -11,6 +11,7 @@ path = "src/lib.rs"
 [dev-dependencies]
 tokio = { version = "1.7.1", features = ["time", "rt-multi-thread", "macros"] }
 deposit_contract = { path = "../common/deposit_contract" }
+async-std = { version = "1.9.0", features= ["attributes"] }
 
 [dependencies]
 eth2_ssz = "0.1.2"
