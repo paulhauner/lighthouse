@@ -5,7 +5,7 @@ authors = ["Paul Hauner <paul@paulhauner.com>", "Age Manning <Age@AgeManning.com
 edition = "2018"
 
 [[bench]]
-name = "benches"
+name = "altair_balance_changes"
 harness = false
 
 [dependencies]
@@ -51,6 +51,8 @@ serde_json = "1.0.58"
 criterion = "0.3.3"
 beacon_chain = { path = "../../beacon_node/beacon_chain" }
 eth2_interop_keypairs = { path = "../../common/eth2_interop_keypairs" }
+eth2 = { path = "../../common/eth2" }
+tokio = "1.9.0"
 
 [features]
 default = ["sqlite", "legacy-arith"]

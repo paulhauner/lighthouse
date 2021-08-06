@@ -19,12 +19,13 @@ use futures_util::StreamExt;
 pub use reqwest;
 use reqwest::{IntoUrl, Response};
 pub use reqwest::{StatusCode, Url};
-use sensitive_url::SensitiveUrl;
 use serde::{de::DeserializeOwned, Serialize};
 use std::convert::TryFrom;
 use std::fmt;
 use std::iter::Iterator;
 use std::time::Duration;
+
+pub use sensitive_url::SensitiveUrl;
 
 pub const V1: EndpointVersion = EndpointVersion(1);
 pub const V2: EndpointVersion = EndpointVersion(2);
