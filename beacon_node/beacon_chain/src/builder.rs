@@ -15,6 +15,7 @@ use crate::{
     Eth1ChainBackend, ServerSentEventHandler,
 };
 use eth1::Config as Eth1Config;
+use execution_layer::ExecutionLayer;
 use fork_choice::ForkChoice;
 use futures::channel::mpsc::Sender;
 use operation_pool::{OperationPool, PersistedOperationPool};
@@ -75,6 +76,7 @@ pub struct BeaconChainBuilder<T: BeaconChainTypes> {
     >,
     op_pool: Option<OperationPool<T::EthSpec>>,
     eth1_chain: Option<Eth1Chain<T::Eth1Chain, T::EthSpec>>,
+    execution_layer: Option<ExecutionLayer>,
     event_handler: Option<ServerSentEventHandler<T::EthSpec>>,
     slot_clock: Option<T::SlotClock>,
     shutdown_sender: Option<Sender<ShutdownReason>>,
@@ -112,6 +114,7 @@ where
             fork_choice: None,
             op_pool: None,
             eth1_chain: None,
+            execution_layer: None,
             event_handler: None,
             slot_clock: None,
             shutdown_sender: None,
@@ -343,6 +346,12 @@ where
     /// Sets the `BeaconChain` eth1 backend.
     pub fn eth1_backend(mut self, backend: Option<TEth1Backend>) -> Self {
         self.eth1_chain = backend.map(Eth1Chain::new);
+        self
+    }
+
+    /// Sets the `BeaconChain` execution layer.
+    pub fn execution_layer(mut self, execution_layer: Option<ExecutionLayer>) -> Self {
+        self.execution_layer = execution_layer;
         self
     }
 
@@ -586,6 +595,7 @@ where
             observed_proposer_slashings: <_>::default(),
             observed_attester_slashings: <_>::default(),
             eth1_chain: self.eth1_chain,
+            execution_layer: self.execution_layer,
             genesis_validators_root: canonical_head.beacon_state.genesis_validators_root(),
             canonical_head: TimeoutRwLock::new(canonical_head.clone()),
             genesis_block_root,

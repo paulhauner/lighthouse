@@ -457,6 +457,7 @@ dependencies = [
  "eth2_ssz",
  "eth2_ssz_derive",
  "eth2_ssz_types",
+ "execution_layer",
  "exit-future",
  "fork_choice",
  "futures",
@@ -2084,10 +2085,10 @@ dependencies = [
  "serde",
  "serde_json",
  "slog",
+ "task_executor",
  "tokio",
  "types",
  "warp",
- "warp_utils",
 ]
 
 [[package]]
