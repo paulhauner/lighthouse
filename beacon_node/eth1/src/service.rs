@@ -10,7 +10,7 @@ use crate::{
 };
 use fallback::{Fallback, FallbackError};
 use futures::future::TryFutureExt;
-use parking_lot::{RwLock, RwLockReadGuard};
+use parking_lot::{Mutex, RwLock, RwLockReadGuard};
 use sensitive_url::SensitiveUrl;
 use serde::{Deserialize, Serialize};
 use slog::{crit, debug, error, info, trace, warn, Logger};
@@ -81,7 +81,7 @@ async fn get_state(endpoint: &EndpointWithState) -> Option<EndpointState> {
 /// is not usable.
 pub struct EndpointsCache {
     pub fallback: Fallback<EndpointWithState>,
-    pub cur_endpoint_url: RwLock<Option<SensitiveUrl>>,
+    pub current_endpoint_url: Mutex<Option<SensitiveUrl>>,
     pub config_network_id: Eth1Id,
     pub config_chain_id: Eth1Id,
     pub log: Logger,
@@ -122,18 +122,26 @@ impl EndpointsCache {
         state
     }
 
-    /// Update the endpoint_index to index
-    /// Returns previous value
-    pub fn update_cur_endpoint_url(&self, url: SensitiveUrl) -> (Option<SensitiveUrl>, bool) {
-        let mut rw_ref = self.cur_endpoint_url.write();
-        let prev_url = rw_ref.clone();
-        *rw_ref = Some(url.clone());
-        let changed: bool = if let Some(purl) = &prev_url {
-            purl.full != url.full
+    /// Update the last used endpoint URL, returning `Some(previous_endpoint)` if there was already
+    /// a previous endpoint and it was different to `url`.
+    ///
+    /// ## Note
+    ///
+    /// This function will return `None` if there was no prior endpoint. This avoids triggering
+    /// "endpoint changed" logs each time the node starts up.
+    pub fn update_current_endpoint_url(&self, url: SensitiveUrl) -> Option<SensitiveUrl> {
+        let mut current_endpoint_url = self.current_endpoint_url.lock();
+
+        if current_endpoint_url
+            .as_ref()
+            .map_or(true, |current| current.full != url.full)
+        {
+            let previous = current_endpoint_url.clone();
+            *current_endpoint_url = Some(url);
+            previous
         } else {
-            true
-        };
-        (prev_url, changed)
+            None
+        }
     }
 
     /// Return the first successful result along with number of previous errors encountered
@@ -158,22 +166,14 @@ impl EndpointsCache {
                         );
                         match func(&endpoint.endpoint).await {
                             Ok(t) => {
-                                let (prev_url, changed) =
-                                    self.update_cur_endpoint_url(endpoint.endpoint.clone());
-                                if changed {
+                                if let Some(previous_endpoint) =
+                                    self.update_current_endpoint_url(endpoint.endpoint.clone())
+                                {
                                     info!(
                                         self.log,
-                                        "Changing to eth1 endpoint {}",
-                                        endpoint.endpoint.to_string()
-                                    );
-                                    info!(
-                                        self.log,
-                                        "            from endpoint {}",
-                                        if let Some(purl) = prev_url {
-                                            purl.to_string()
-                                        } else {
-                                            "None".to_string()
-                                        }
+                                        "Changing eth1 endpoint";
+                                        "previous" => &previous_endpoint.redacted,
+                                        "current" => &endpoint.endpoint.redacted,
                                     );
                                 }
                                 Ok(t)
@@ -683,7 +683,7 @@ impl Service {
         let config_chain_id = self.config().chain_id.clone();
         let new_cache = Arc::new(EndpointsCache {
             fallback: Fallback::new(endpoints.into_iter().map(EndpointWithState::new).collect()),
-            cur_endpoint_url: RwLock::new(None),
+            current_endpoint_url: <_>::default(),
             config_network_id,
             config_chain_id,
             log: self.log.clone(),
@@ -903,7 +903,7 @@ impl Service {
     /// - Err(_) if there is an error.
     ///
     /// Emits logs for debugging and errors.
-    pub async fn update_deposit_cache<'e>(
+    pub async fn update_deposit_cache(
         &self,
         new_block_numbers: Option<Option<RangeInclusive<u64>>>,
         endpoints: &EndpointsCache,
@@ -1060,7 +1060,7 @@ impl Service {
     /// - Err(_) if there is an error.
     ///
     /// Emits logs for debugging and errors.
-    pub async fn update_block_cache<'e>(
+    pub async fn update_block_cache(
         &self,
         new_block_numbers: Option<Option<RangeInclusive<u64>>>,
         endpoints: &EndpointsCache,
