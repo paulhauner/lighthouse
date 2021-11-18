@@ -19,7 +19,7 @@ pub type Hash256 = ethereum_types::H256;
 /// Convenience method for `MerkleHasher` which also provides some fast-paths for small trees.
 ///
 /// `minimum_leaf_count` will only be used if it is greater than or equal to the minimum number of leaves that can be created from `bytes`.
-pub fn merkle_root(bytes: &[u8], minimum_leaf_count: usize) -> Hash256 {
+pub fn merkle_root(bytes: &[u8], minimum_leaf_count: usize) -> Option<Hash256> {
     let leaves = std::cmp::max(
         (bytes.len() + (HASHSIZE - 1)) / HASHSIZE,
         minimum_leaf_count,
@@ -27,28 +27,30 @@ pub fn merkle_root(bytes: &[u8], minimum_leaf_count: usize) -> Hash256 {
 
     if leaves == 0 {
         // If there are no bytes then the hash is always zero.
-        Hash256::zero()
+        Some(Hash256::zero())
     } else if leaves == 1 {
         // If there is only one leaf, the hash is always those leaf bytes padded out to 32-bytes.
         let mut hash = [0; HASHSIZE];
         hash[0..bytes.len()].copy_from_slice(bytes);
-        Hash256::from_slice(&hash)
+        Some(Hash256::from_slice(&hash))
     } else if leaves == 2 {
         // If there are only two leaves (this is common with BLS pubkeys), we can avoid some
         // overhead with `MerkleHasher` and just do a simple 3-node tree here.
         let mut leaves = [0; HASHSIZE * 2];
         leaves[0..bytes.len()].copy_from_slice(bytes);
 
-        Hash256::from_slice(&hash_fixed(&leaves))
+        Some(Hash256::from_slice(&hash_fixed(&leaves)))
     } else {
         // If there are 3 or more leaves, use `MerkleHasher`.
-        let mut hasher = MerkleHasher::with_leaves(leaves);
+        let mut hasher = MerkleHasher::with_leaves(leaves)?;
         hasher
             .write(bytes)
             .expect("the number of leaves is adequate for the number of bytes");
-        hasher
+        let root = hasher
             .finish()
-            .expect("the number of leaves is adequate for the number of bytes")
+            .expect("the number of leaves is adequate for the number of bytes");
+
+        Some(root)
     }
 }
 

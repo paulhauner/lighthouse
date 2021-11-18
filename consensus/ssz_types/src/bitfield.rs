@@ -620,7 +620,8 @@ impl<N: Unsigned + Clone> tree_hash::TreeHash for Bitfield<Variable<N>> {
     fn tree_hash_root(&self) -> Hash256 {
         // Note: we use `as_slice` because it does _not_ have the length-delimiting bit set (or
         // present).
-        let root = bitfield_bytes_tree_hash_root::<N>(self.as_slice());
+        let root = bitfield_bytes_tree_hash_root::<N>(self.as_slice())
+            .expect("merkle tree must not exceed usize limits");
         tree_hash::mix_in_length(&root, self.len())
     }
 }
@@ -640,6 +641,7 @@ impl<N: Unsigned + Clone> tree_hash::TreeHash for Bitfield<Fixed<N>> {
 
     fn tree_hash_root(&self) -> Hash256 {
         bitfield_bytes_tree_hash_root::<N>(self.as_slice())
+            .expect("merkle tree must not exceed usize limits")
     }
 }
 

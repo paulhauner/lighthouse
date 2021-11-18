@@ -191,7 +191,8 @@ where
     }
 
     fn tree_hash_root(&self) -> Hash256 {
-        let root = vec_tree_hash_root::<T, N>(&self.vec);
+        let root = vec_tree_hash_root::<T, N>(&self.vec)
+            .expect("merkle tree must not exceed usize limits");
 
         tree_hash::mix_in_length(&root, self.len())
     }
@@ -357,7 +358,7 @@ mod test {
     }
 
     fn root_with_length(bytes: &[u8], len: usize) -> Hash256 {
-        let root = merkle_root(bytes, 0);
+        let root = merkle_root(bytes, 0).unwrap();
         tree_hash::mix_in_length(&root, len)
     }
 
@@ -408,7 +409,7 @@ mod test {
     }
 
     fn padded_root_with_length(bytes: &[u8], len: usize, min_nodes: usize) -> Hash256 {
-        let root = merkle_root(bytes, min_nodes);
+        let root = merkle_root(bytes, min_nodes).unwrap();
         tree_hash::mix_in_length(&root, len)
     }
 

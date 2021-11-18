@@ -1,6 +1,7 @@
 use crate::{get_zero_hash, Hash256, HASHSIZE};
 use eth2_hashing::{Context, Sha256Context, HASH_LEN};
 use smallvec::{smallvec, SmallVec};
+use std::convert::TryFrom;
 use std::mem;
 
 type SmallVec8<T> = SmallVec<[T; 8]>;
@@ -165,7 +166,7 @@ impl MerkleHasher {
     ///
     /// If `num_leaves == 0`, a tree of depth 1 will be created. If no leaves are provided it will
     /// return a root of `[0; 32]`.
-    pub fn with_leaves(num_leaves: usize) -> Self {
+    pub fn with_leaves(num_leaves: usize) -> Option<Self> {
         let depth = get_depth(num_leaves.next_power_of_two()) + 1;
         Self::with_depth(depth)
     }
@@ -178,16 +179,22 @@ impl MerkleHasher {
     /// ## Panics
     ///
     /// Panics if `depth == 0`.
-    fn with_depth(depth: usize) -> Self {
-        assert!(depth > 0, "merkle tree cannot have a depth of zero");
+    fn with_depth(depth: usize) -> Option<Self> {
+        if depth == 0 {
+            return None;
+        }
 
-        Self {
+        let next_leaf = u32::try_from(depth)
+            .ok()
+            .and_then(|depth| 1_usize.checked_shl(depth - 1))?;
+
+        Some(Self {
             half_nodes: SmallVec::with_capacity(depth - 1),
             depth,
-            next_leaf: 1 << (depth - 1),
+            next_leaf,
             buffer: SmallVec::with_capacity(32),
             root: None,
-        }
+        })
     }
 
     /// Write some bytes to the hasher.
