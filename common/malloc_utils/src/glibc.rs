@@ -26,7 +26,7 @@ const OPTIMAL_MMAP_THRESHOLD: c_int = 2 * 1_024 * 1_024;
 /// Source:
 ///
 /// https://github.com/lattera/glibc/blob/895ef79e04a953cac1493863bcae29ad85657ee1/malloc/malloc.h#L115-L123
-const M_MMAP_THRESHOLD: c_int = -4;
+const M_MMAP_THRESHOLD: c_int = -3;
 
 /// Environment variables used to configure malloc.
 ///
