@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate log;
+mod attestation_indexer;
 mod change_genesis_time;
 mod check_deposit_data;
 mod create_payload_header;
@@ -656,6 +657,35 @@ fn main() {
                         )
                 )
         )
+        .subcommand(
+            SubCommand::with_name("attestation-indexer")
+                .about(
+                    "Loads a block and state (JSON format) and indexes the attestations in the block.",
+                )
+                .arg(
+                    Arg::with_name("block")
+                        .long("block")
+                        .value_name("PATH")
+                        .takes_value(true)
+                        .required(true)
+                        .help("The path to the JSON file"),
+                )
+                .arg(
+                    Arg::with_name("state")
+                        .long("state")
+                        .value_name("PATH")
+                        .takes_value(true)
+                        .required(true)
+                        .help("The path to the JSON file"),
+                )
+                .arg(
+                    Arg::with_name("attestation-index")
+                        .long("attestation-index")
+                        .value_name("INDEX")
+                        .takes_value(true)
+                        .help("When specified, only return the attestation at this index in the block"),
+                ),
+        )
         .get_matches();
 
     let result = matches
@@ -741,6 +771,8 @@ fn run<T: EthSpec>(
             .runtime()
             .block_on(etl::block_efficiency::run::<T>(matches))
             .map_err(|e| format!("Failed to run etl-block_efficiency: {}", e)),
+        ("attestation-indexer", Some(matches)) => attestation_indexer::run::<T>(matches)
+            .map_err(|e| format!("Failed to run attestation-indexer: {}", e)),
         (other, _) => Err(format!("Unknown subcommand {}. See --help.", other)),
     }
 }
