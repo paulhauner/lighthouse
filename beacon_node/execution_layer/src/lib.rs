@@ -63,7 +63,6 @@ pub enum Error {
     MissingLatestValidHash,
     InvalidJWTSecret(String),
     NoAuthProvided(String),
-    MissingLatestValidHash,
 }
 
 impl From<ApiError> for Error {

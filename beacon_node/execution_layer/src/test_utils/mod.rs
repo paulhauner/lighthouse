@@ -19,7 +19,6 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use tokio::{runtime, sync::oneshot};
 use types::{EthSpec, ExecutionBlockHash, Uint256};
-use types::{EthSpec, Hash256, Uint256};
 use warp::{http::StatusCode, Filter, Rejection};
 
 pub use execution_block_generator::{generate_pow_block, ExecutionBlockGenerator};
@@ -227,6 +226,12 @@ impl warp::reject::Reject for MissingIdField {}
 struct AuthError(String);
 
 impl warp::reject::Reject for AuthError {}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StaticNewPayloadResponse {
+    status: PayloadStatusV1,
+    should_import: bool,
+}
 
 /// A wrapper around all the items required to spawn the HTTP server.
 ///
