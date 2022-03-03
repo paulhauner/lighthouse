@@ -1845,12 +1845,8 @@ dependencies = [
  "hex",
  "jsonwebtoken",
  "lru",
-<<<<<<< HEAD
  "parking_lot 0.11.2",
-=======
- "parking_lot",
  "rand 0.7.3",
->>>>>>> 18226cbec (Create a default jwt secret if not provided through cli)
  "reqwest",
  "sensitive_url",
  "serde",
@@ -4710,7 +4706,7 @@ version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "588f6378e4dd99458b60ec275b4477add41ce4fa9f64dcba6f15adccb19b50d6"
 dependencies = [
- "rand 0.8.4",
+ "rand 0.8.5",
 ]
 
 [[package]]
