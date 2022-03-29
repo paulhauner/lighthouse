@@ -6,7 +6,7 @@
 
 use auth::{Auth, JwtKey};
 use engine_api::{Error as ApiError, *};
-use engines::{Engine, EngineError, Engines, ForkChoiceState, Logging};
+use engines::{Engine, EngineError, Engines, Logging};
 use lru::LruCache;
 use payload_status::process_multiple_payload_statuses;
 use sensitive_url::SensitiveUrl;
@@ -29,6 +29,7 @@ use types::{ChainSpec, Epoch, ExecutionBlockHash, ProposerPreparationData, Slot}
 pub use engine_api::{
     http::HttpJsonRpc, json_structures, PayloadAttributes, PayloadStatusV1Status,
 };
+pub use engines::ForkChoiceState;
 pub use payload_status::PayloadStatus;
 
 mod engine_api;
