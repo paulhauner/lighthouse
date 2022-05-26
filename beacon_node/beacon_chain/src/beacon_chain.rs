@@ -3771,7 +3771,11 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
             )?
             .ok_or(Error::MissingFinalizedStateRoot(new_finalized_slot))?;
 
-            self.after_finalization(&head.beacon_state, new_finalized_state_root)?;
+            self.after_finalization(
+                &head.beacon_state,
+                new_finalized_state_root,
+                execution_optimistic,
+            )?;
         }
 
         // Register a server-sent event if necessary
@@ -4540,6 +4544,7 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
         &self,
         head_state: &BeaconState<T::EthSpec>,
         new_finalized_state_root: Hash256,
+        head_is_execution_optimistic: bool,
     ) -> Result<(), Error> {
         self.fork_choice.write().prune()?;
         let new_finalized_checkpoint = head_state.finalized_checkpoint();
@@ -4587,7 +4592,7 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
                     epoch: new_finalized_checkpoint.epoch,
                     block: new_finalized_checkpoint.root,
                     state: new_finalized_state_root,
-                    execution_optimistic: self.is_optimistic_head(None)?,
+                    execution_optimistic: head_is_execution_optimistic,
                 }));
             }
         }
