@@ -1474,6 +1474,14 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
         epoch: Epoch,
         head_block_root: Hash256,
     ) -> Result<(Vec<Option<AttestationDuty>>, Hash256, bool), Error> {
+        // Check the optimistic status of the block *before* using `with_committee_cache` to avoid
+        // meshing locks.
+        let execution_optimistic = self
+            .fork_choice
+            .read()
+            .is_optimistic_block_no_fallback(&head_block_root)
+            .map_err(BeaconChainError::ForkChoiceError)?;
+
         self.with_committee_cache(head_block_root, epoch, |committee_cache, dependent_root| {
             let duties = validator_indices
                 .iter()
@@ -1482,13 +1490,6 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
                     committee_cache.get_attestation_duties(validator_index)
                 })
                 .collect();
-
-            let execution_optimistic = self.is_optimistic_head_block(
-                &self
-                    .store
-                    .get_full_block(&head_block_root)?
-                    .ok_or(Error::MissingBeaconBlock(head_block_root))?,
-            )?;
 
             Ok((duties, dependent_root, execution_optimistic))
         })
