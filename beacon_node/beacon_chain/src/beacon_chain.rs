@@ -3454,13 +3454,20 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
 
     fn fork_choice_internal(self: &Arc<Self>, slot: Slot) -> Result<(), Error> {
         // Atomically obtain the head block root and the finalized block.
-        let (beacon_block_root, finalized_block) = {
+        let (beacon_block_root, finalized_block, execution_optimistic) = {
             let mut fork_choice = self.fork_choice.write();
 
             // Determine the root of the block that is the head of the chain.
             let beacon_block_root = fork_choice.get_head(slot, &self.spec)?;
 
-            (beacon_block_root, fork_choice.get_finalized_block()?)
+            let execution_optimistic =
+                fork_choice.is_optimistic_block_no_fallback(&beacon_block_root)?;
+
+            (
+                beacon_block_root,
+                fork_choice.get_finalized_block()?,
+                execution_optimistic,
+            )
         };
 
         let current_head = self.head_info()?;
@@ -3622,8 +3629,6 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
         let prev_dependent_root = new_head
             .beacon_state
             .attester_shuffling_decision_root(self.genesis_block_root, RelativeEpoch::Current);
-
-        let execution_optimistic = self.is_optimistic_head_block(&new_head.beacon_block)?;
 
         drop(lag_timer);
 
