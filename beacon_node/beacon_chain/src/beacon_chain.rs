@@ -2893,7 +2893,7 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
                 snapshot_cache.insert(
                     BeaconSnapshot {
                         beacon_state: state,
-                        beacon_block: signed_block.clone(),
+                        beacon_block: signed_block,
                         beacon_block_root: block_root,
                     },
                     None,
@@ -2918,7 +2918,7 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
                 event_handler.register(EventKind::Block(SseBlock {
                     slot,
                     block: block_root,
-                    execution_optimistic: self.is_optimistic_block(&signed_block)?,
+                    execution_optimistic: payload_verification_status.is_optimistic(),
                 }));
             }
         }
