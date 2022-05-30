@@ -55,18 +55,20 @@ impl BlockId {
                         root
                     )));
                 };
-                chain
+
+                if chain
                     .store
-                    .get_blinded_block(root)
+                    .block_exists(root)
                     .map_err(BeaconChainError::DBError)
                     .map_err(warp_utils::reject::beacon_chain_error)?
-                    .map(|block| block.canonical_root())
-                    .ok_or_else(|| {
-                        warp_utils::reject::custom_not_found(format!(
-                            "beacon block with root {}",
-                            root
-                        ))
-                    })
+                {
+                    Ok(*root)
+                } else {
+                    Err(warp_utils::reject::custom_not_found(format!(
+                        "beacon block with root {}",
+                        root
+                    )))
+                }
             }
         }
     }
