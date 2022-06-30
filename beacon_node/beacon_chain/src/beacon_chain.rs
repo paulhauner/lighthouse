@@ -2096,7 +2096,6 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
     {
         let handle = self
             .task_executor
-            .clone()
             .spawn_blocking_handle(task, name)
             .ok_or(Error::RuntimeShutdown)?;
 
@@ -2596,22 +2595,22 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
         // Do not import a block that doesn't descend from the finalized root.
         check_block_is_finalized_descendant(self, &fork_choice, &signed_block)?;
 
-        // Note: we're using the finalized checkpoint from the head state, rather than fork
-        // choice.
-        //
-        // We are doing this to ensure that we detect changes in finalization. It's possible
-        // that fork choice has already been updated to the finalized checkpoint in the block
-        // we're importing.
-        let current_head_finalized_checkpoint =
-            self.canonical_head.cached_head().finalized_checkpoint();
-        // Compare the existing finalized checkpoint with the incoming block's finalized checkpoint.
-        let new_finalized_checkpoint = state.finalized_checkpoint();
-
         // Alias for readability.
         let block = signed_block.message();
 
         // Only perform the weak subjectivity check if it was configured.
         if let Some(wss_checkpoint) = self.config.weak_subjectivity_checkpoint {
+            // Note: we're using the finalized checkpoint from the head state, rather than fork
+            // choice.
+            //
+            // We are doing this to ensure that we detect changes in finalization. It's possible
+            // that fork choice has already been updated to the finalized checkpoint in the block
+            // we're importing.
+            let current_head_finalized_checkpoint =
+                self.canonical_head.cached_head().finalized_checkpoint();
+            // Compare the existing finalized checkpoint with the incoming block's finalized checkpoint.
+            let new_finalized_checkpoint = state.finalized_checkpoint();
+
             // This ensures we only perform the check once.
             if (current_head_finalized_checkpoint.epoch < wss_checkpoint.epoch)
                 && (wss_checkpoint.epoch <= new_finalized_checkpoint.epoch)
