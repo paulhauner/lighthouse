@@ -1,6 +1,6 @@
-use super::batch::{BatchInfo, BatchState};
-use crate::beacon_processor::ChainSegmentProcessId;
+use super::batch::{BatchInfo, BatchProcessingResult, BatchState};
 use crate::beacon_processor::WorkEvent as BeaconWorkEvent;
+use crate::beacon_processor::{ChainSegmentProcessId, FailureMode};
 use crate::sync::{manager::Id, network_context::SyncNetworkContext, BatchProcessResult};
 use beacon_chain::BeaconChainTypes;
 use fnv::FnvHashMap;
@@ -9,6 +9,7 @@ use rand::seq::SliceRandom;
 use slog::{crit, debug, o, warn};
 use std::collections::{btree_map::Entry, BTreeMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use types::{Epoch, EthSpec, Hash256, SignedBeaconBlock, Slot};
 
@@ -216,7 +217,7 @@ impl<T: BeaconChainTypes> SyncingChain<T> {
         batch_id: BatchId,
         peer_id: &PeerId,
         request_id: Id,
-        beacon_block: Option<SignedBeaconBlock<T::EthSpec>>,
+        beacon_block: Option<Arc<SignedBeaconBlock<T::EthSpec>>>,
     ) -> ProcessingResult {
         // check if we have this batch
         let batch = match self.batches.get_mut(&batch_id) {
@@ -320,6 +321,7 @@ impl<T: BeaconChainTypes> SyncingChain<T> {
                 &BatchProcessResult::Failed {
                     imported_blocks: false,
                     peer_action: None,
+                    mode: FailureMode::ConsensusLayer,
                 },
             )
         } else {
@@ -463,7 +465,7 @@ impl<T: BeaconChainTypes> SyncingChain<T> {
                     ))
                 })?;
 
-                batch.processing_completed(true)?;
+                batch.processing_completed(BatchProcessingResult::Success)?;
                 // If the processed batch was not empty, we can validate previous unvalidated
                 // blocks.
                 if *was_non_empty {
@@ -499,6 +501,7 @@ impl<T: BeaconChainTypes> SyncingChain<T> {
             BatchProcessResult::Failed {
                 imported_blocks,
                 peer_action,
+                mode: _,
             } => {
                 let batch = self.batches.get_mut(&batch_id).ok_or_else(|| {
                     RemoveChain::WrongChainState(format!(
@@ -512,9 +515,12 @@ impl<T: BeaconChainTypes> SyncingChain<T> {
                         batch.state(),
                     ))
                 })?;
-                debug!(self.log, "Batch processing failed"; "imported_blocks" => imported_blocks,
+                debug!(self.log, "Batch processing failed"; "imported_blocks" => imported_blocks, "peer_penalty" => ?peer_action,
                     "batch_epoch" => batch_id, "peer" => %peer, "client" => %network.client_type(&peer));
-                if batch.processing_completed(false)? {
+
+                if batch.processing_completed(BatchProcessingResult::Failed {
+                    count_attempt: peer_action.is_some(),
+                })? {
                     // check that we have not exceeded the re-process retry counter
                     // If a batch has exceeded the invalid batch lookup attempts limit, it means
                     // that it is likely all peers in this chain are are sending invalid batches

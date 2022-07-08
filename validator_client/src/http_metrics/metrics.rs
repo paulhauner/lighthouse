@@ -1,4 +1,5 @@
 use super::Context;
+use malloc_utils::scrape_allocator_metrics;
 use slot_clock::SlotClock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use types::EthSpec;
@@ -131,6 +132,22 @@ lazy_static::lazy_static! {
         &["endpoint"]
     );
 
+    /*
+    * Beacon node availability metrics
+    */
+    pub static ref AVAILABLE_BEACON_NODES_COUNT: Result<IntGauge> = try_create_int_gauge(
+        "vc_beacon_nodes_available_count",
+        "Number of available beacon nodes",
+    );
+    pub static ref SYNCED_BEACON_NODES_COUNT: Result<IntGauge> = try_create_int_gauge(
+        "vc_beacon_nodes_synced_count",
+        "Number of synced beacon nodes",
+    );
+    pub static ref TOTAL_BEACON_NODES_COUNT: Result<IntGauge> = try_create_int_gauge(
+        "vc_beacon_nodes_total_count",
+        "Total number of beacon nodes",
+    );
+
     pub static ref ETH2_FALLBACK_CONFIGURED: Result<IntGauge> = try_create_int_gauge(
         "sync_eth2_fallback_configured",
         "The number of configured eth2 fallbacks",
@@ -188,6 +205,12 @@ pub fn gather_prometheus_metrics<T: EthSpec>(
                 );
             }
         }
+    }
+
+    // It's important to ensure these metrics are explicitly enabled in the case that users aren't
+    // using glibc and this function causes panics.
+    if ctx.config.allocator_metrics_enabled {
+        scrape_allocator_metrics();
     }
 
     warp_utils::metrics::scrape_health_metrics();

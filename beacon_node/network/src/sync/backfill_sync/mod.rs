@@ -8,10 +8,10 @@
 //! If a batch fails, the backfill sync cannot progress. In this scenario, we mark the backfill
 //! sync as failed, log an error and attempt to retry once a new peer joins the node.
 
-use crate::beacon_processor::{ChainSegmentProcessId, WorkEvent as BeaconWorkEvent};
+use crate::beacon_processor::{ChainSegmentProcessId, FailureMode, WorkEvent as BeaconWorkEvent};
 use crate::sync::manager::{BatchProcessResult, Id};
 use crate::sync::network_context::SyncNetworkContext;
-use crate::sync::range_sync::{BatchConfig, BatchId, BatchInfo, BatchState};
+use crate::sync::range_sync::{BatchConfig, BatchId, BatchInfo, BatchProcessingResult, BatchState};
 use beacon_chain::{BeaconChain, BeaconChainTypes};
 use lighthouse_network::types::{BackFillState, NetworkGlobals};
 use lighthouse_network::{PeerAction, PeerId};
@@ -53,7 +53,7 @@ impl BatchConfig for BackFillBatchConfig {
     fn max_batch_processing_attempts() -> u8 {
         MAX_BATCH_PROCESSING_ATTEMPTS
     }
-    fn batch_attempt_hash<T: EthSpec>(blocks: &[SignedBeaconBlock<T>]) -> u64 {
+    fn batch_attempt_hash<T: EthSpec>(blocks: &[Arc<SignedBeaconBlock<T>>]) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         let mut hasher = DefaultHasher::new();
@@ -392,7 +392,7 @@ impl<T: BeaconChainTypes> BackFillSync<T> {
         batch_id: BatchId,
         peer_id: &PeerId,
         request_id: Id,
-        beacon_block: Option<SignedBeaconBlock<T::EthSpec>>,
+        beacon_block: Option<Arc<SignedBeaconBlock<T::EthSpec>>>,
     ) -> Result<ProcessResult, BackFillError> {
         // check if we have this batch
         let batch = match self.batches.get_mut(&batch_id) {
@@ -554,6 +554,7 @@ impl<T: BeaconChainTypes> BackFillSync<T> {
                     imported_blocks: false,
                     // The beacon processor queue is full, no need to penalize the peer.
                     peer_action: None,
+                    mode: FailureMode::ConsensusLayer,
                 },
             )
         } else {
@@ -606,7 +607,7 @@ impl<T: BeaconChainTypes> BackFillSync<T> {
                     }
                 };
 
-                if let Err(e) = batch.processing_completed(true) {
+                if let Err(e) = batch.processing_completed(BatchProcessingResult::Success) {
                     self.fail_sync(BackFillError::BatchInvalidState(batch_id, e.0))?;
                 }
                 // If the processed batch was not empty, we can validate previous unvalidated
@@ -638,6 +639,7 @@ impl<T: BeaconChainTypes> BackFillSync<T> {
             BatchProcessResult::Failed {
                 imported_blocks,
                 peer_action,
+                mode: _,
             } => {
                 let batch = match self.batches.get_mut(&batch_id) {
                     Some(v) => v,
@@ -664,7 +666,9 @@ impl<T: BeaconChainTypes> BackFillSync<T> {
                 };
                 debug!(self.log, "Batch processing failed"; "imported_blocks" => imported_blocks,
                     "batch_epoch" => batch_id, "peer" => %peer, "client" => %network.client_type(&peer));
-                match batch.processing_completed(false) {
+                match batch.processing_completed(BatchProcessingResult::Failed {
+                    count_attempt: peer_action.is_some(),
+                }) {
                     Err(e) => {
                         // Batch was in the wrong state
                         self.fail_sync(BackFillError::BatchInvalidState(batch_id, e.0))

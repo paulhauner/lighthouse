@@ -17,7 +17,7 @@ use payload_status::process_multiple_payload_statuses;
 pub use payload_status::PayloadStatus;
 use sensitive_url::SensitiveUrl;
 use serde::{Deserialize, Serialize};
-use slog::{crit, debug, error, info, trace, Logger};
+use slog::{crit, debug, error, info, trace, warn, Logger};
 use slot_clock::SlotClock;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -158,72 +158,60 @@ impl ExecutionLayer {
         let Config {
             execution_endpoints: urls,
             builder_endpoints: builder_urls,
-            mut secret_files,
+            secret_files,
             suggested_fee_recipient,
             jwt_id,
             jwt_version,
             default_datadir,
         } = config;
 
-        if urls.is_empty() {
-            return Err(Error::NoEngines);
+        if urls.len() > 1 {
+            warn!(log, "Only the first execution engine url will be used");
         }
+        let execution_url = urls.into_iter().next().ok_or(Error::NoEngines)?;
 
-        // Extend the jwt secret files with the default jwt secret path if not provided via cli.
-        // This ensures that we have a jwt secret for every EL.
-        secret_files.extend(vec![
-            default_datadir.join(DEFAULT_JWT_FILE);
-            urls.len().saturating_sub(secret_files.len())
-        ]);
-
-        let secrets: Vec<(JwtKey, PathBuf)> = secret_files
-            .iter()
-            .map(|p| {
-                // Read secret from file if it already exists
-                if p.exists() {
-                    std::fs::read_to_string(p)
-                        .map_err(|e| {
-                            format!("Failed to read JWT secret file {:?}, error: {:?}", p, e)
-                        })
-                        .and_then(|ref s| {
-                            let secret = JwtKey::from_slice(
-                                &hex::decode(strip_prefix(s.trim_end()))
-                                    .map_err(|e| format!("Invalid hex string: {:?}", e))?,
-                            )?;
-                            Ok((secret, p.to_path_buf()))
-                        })
-                } else {
-                    // Create a new file and write a randomly generated secret to it if file does not exist
-                    std::fs::File::options()
-                        .write(true)
-                        .create_new(true)
-                        .open(p)
-                        .map_err(|e| {
-                            format!("Failed to open JWT secret file {:?}, error: {:?}", p, e)
-                        })
-                        .and_then(|mut f| {
-                            let secret = auth::JwtKey::random();
-                            f.write_all(secret.hex_string().as_bytes()).map_err(|e| {
-                                format!("Failed to write to JWT secret file: {:?}", e)
-                            })?;
-                            Ok((secret, p.to_path_buf()))
-                        })
-                }
-            })
-            .collect::<Result<_, _>>()
-            .map_err(Error::InvalidJWTSecret)?;
-
-        let engines: Vec<Engine<EngineApi>> = urls
+        // Use the default jwt secret path if not provided via cli.
+        let secret_file = secret_files
             .into_iter()
-            .zip(secrets.into_iter())
-            .map(|(url, (secret, path))| {
-                let id = url.to_string();
-                let auth = Auth::new(secret, jwt_id.clone(), jwt_version.clone());
-                debug!(log, "Loaded execution endpoint"; "endpoint" => %id, "jwt_path" => ?path);
-                let api = HttpJsonRpc::<EngineApi>::new_with_auth(url, auth)?;
-                Ok(Engine::<EngineApi>::new(id, api))
-            })
-            .collect::<Result<_, ApiError>>()?;
+            .next()
+            .unwrap_or_else(|| default_datadir.join(DEFAULT_JWT_FILE));
+
+        let jwt_key = if secret_file.exists() {
+            // Read secret from file if it already exists
+            std::fs::read_to_string(&secret_file)
+                .map_err(|e| format!("Failed to read JWT secret file. Error: {:?}", e))
+                .and_then(|ref s| {
+                    let secret = JwtKey::from_slice(
+                        &hex::decode(strip_prefix(s.trim_end()))
+                            .map_err(|e| format!("Invalid hex string: {:?}", e))?,
+                    )?;
+                    Ok(secret)
+                })
+                .map_err(Error::InvalidJWTSecret)
+        } else {
+            // Create a new file and write a randomly generated secret to it if file does not exist
+            std::fs::File::options()
+                .write(true)
+                .create_new(true)
+                .open(&secret_file)
+                .map_err(|e| format!("Failed to open JWT secret file. Error: {:?}", e))
+                .and_then(|mut f| {
+                    let secret = auth::JwtKey::random();
+                    f.write_all(secret.hex_string().as_bytes())
+                        .map_err(|e| format!("Failed to write to JWT secret file: {:?}", e))?;
+                    Ok(secret)
+                })
+                .map_err(Error::InvalidJWTSecret)
+        }?;
+
+        let engine: Engine<EngineApi> = {
+            let id = execution_url.to_string();
+            let auth = Auth::new(jwt_key, jwt_id, jwt_version);
+            debug!(log, "Loaded execution endpoint"; "endpoint" => %id, "jwt_path" => ?secret_file.as_path());
+            let api = HttpJsonRpc::<EngineApi>::new_with_auth(execution_url, auth)
+                .map_err(Error::ApiError)?;
+            Engine::<EngineApi>::new(id, api)
+        };
 
         let builders: Vec<Engine<BuilderApi>> = builder_urls
             .into_iter()
@@ -236,7 +224,7 @@ impl ExecutionLayer {
 
         let inner = Inner {
             engines: Engines {
-                engines,
+                engine,
                 latest_forkchoice_state: <_>::default(),
                 log: log.clone(),
             },
@@ -296,31 +284,6 @@ impl ExecutionLayer {
 
     pub async fn execution_engine_forkchoice_lock(&self) -> MutexGuard<'_, ()> {
         self.inner.execution_engine_forkchoice_lock.lock().await
-    }
-
-    /// Convenience function to allow calling async functions in a non-async context.
-    pub fn block_on<'a, T, U, V>(&'a self, generate_future: T) -> Result<V, Error>
-    where
-        T: Fn(&'a Self) -> U,
-        U: Future<Output = Result<V, Error>>,
-    {
-        let runtime = self.executor().handle().ok_or(Error::ShuttingDown)?;
-        // TODO(merge): respect the shutdown signal.
-        runtime.block_on(generate_future(self))
-    }
-
-    /// Convenience function to allow calling async functions in a non-async context.
-    ///
-    /// The function is "generic" since it does not enforce a particular return type on
-    /// `generate_future`.
-    pub fn block_on_generic<'a, T, U, V>(&'a self, generate_future: T) -> Result<V, Error>
-    where
-        T: Fn(&'a Self) -> U,
-        U: Future<Output = V>,
-    {
-        let runtime = self.executor().handle().ok_or(Error::ShuttingDown)?;
-        // TODO(merge): respect the shutdown signal.
-        Ok(runtime.block_on(generate_future(self)))
     }
 
     /// Convenience function to allow spawning a task without waiting for the result.
@@ -455,23 +418,11 @@ impl ExecutionLayer {
 
     /// Returns `true` if there is at least one synced and reachable engine.
     pub async fn is_synced(&self) -> bool {
-        self.engines().any_synced().await
+        self.engines().is_synced().await
     }
 
     /// Updates the proposer preparation data provided by validators
-    pub fn update_proposer_preparation_blocking(
-        &self,
-        update_epoch: Epoch,
-        preparation_data: &[ProposerPreparationData],
-    ) -> Result<(), Error> {
-        self.block_on_generic(|_| async move {
-            self.update_proposer_preparation(update_epoch, preparation_data)
-                .await
-        })
-    }
-
-    /// Updates the proposer preparation data provided by validators
-    async fn update_proposer_preparation(
+    pub async fn update_proposer_preparation(
         &self,
         update_epoch: Epoch,
         preparation_data: &[ProposerPreparationData],
@@ -531,6 +482,23 @@ impl ExecutionLayer {
         if let Some(preparation_data_entry) =
             self.proposer_preparation_data().await.get(&proposer_index)
         {
+            if let Some(suggested_fee_recipient) = self.inner.suggested_fee_recipient {
+                if preparation_data_entry.preparation_data.fee_recipient != suggested_fee_recipient
+                {
+                    warn!(
+                        self.log(),
+                        "Inconsistent fee recipient";
+                        "msg" => "The fee recipient returned from the Execution Engine differs \
+                        from the suggested_fee_recipient set on the beacon node. This could \
+                        indicate that fees are being diverted to another address. Please \
+                        ensure that the value of suggested_fee_recipient is set correctly and \
+                        that the Execution Engine is trusted.",
+                        "proposer_index" => ?proposer_index,
+                        "fee_recipient" => ?preparation_data_entry.preparation_data.fee_recipient,
+                        "suggested_fee_recipient" => ?suggested_fee_recipient,
+                    )
+                }
+            }
             // The values provided via the API have first priority.
             preparation_data_entry.preparation_data.fee_recipient
         } else if let Some(address) = self.inner.suggested_fee_recipient {
@@ -733,7 +701,7 @@ impl ExecutionLayer {
 
         process_multiple_payload_statuses(
             execution_payload.block_hash,
-            broadcast_results.into_iter(),
+            Some(broadcast_results).into_iter(),
             self.log(),
         )
     }
@@ -886,7 +854,7 @@ impl ExecutionLayer {
         };
         process_multiple_payload_statuses(
             head_block_hash,
-            broadcast_results
+            Some(broadcast_results)
                 .into_iter()
                 .chain(builder_broadcast_results.into_iter())
                 .map(|result| result.map(|response| response.payload_status)),
@@ -901,48 +869,48 @@ impl ExecutionLayer {
             terminal_block_number: 0,
         };
 
-        let broadcast_results = self
+        let broadcast_result = self
             .engines()
             .broadcast(|engine| engine.api.exchange_transition_configuration_v1(local))
             .await;
 
         let mut errors = vec![];
-        for (i, result) in broadcast_results.into_iter().enumerate() {
-            match result {
-                Ok(remote) => {
-                    if local.terminal_total_difficulty != remote.terminal_total_difficulty
-                        || local.terminal_block_hash != remote.terminal_block_hash
-                    {
-                        error!(
-                            self.log(),
-                            "Execution client config mismatch";
-                            "msg" => "ensure lighthouse and the execution client are up-to-date and \
-                                      configured consistently",
-                            "execution_endpoint" => i,
-                            "remote" => ?remote,
-                            "local" => ?local,
-                        );
-                        errors.push(EngineError::Api {
-                            id: i.to_string(),
-                            error: ApiError::TransitionConfigurationMismatch,
-                        });
-                    } else {
-                        debug!(
-                            self.log(),
-                            "Execution client config is OK";
-                            "execution_endpoint" => i
-                        );
-                    }
-                }
-                Err(e) => {
+        // Having no fallbacks, the id of the used node is 0
+        let i = 0usize;
+        match broadcast_result {
+            Ok(remote) => {
+                if local.terminal_total_difficulty != remote.terminal_total_difficulty
+                    || local.terminal_block_hash != remote.terminal_block_hash
+                {
                     error!(
                         self.log(),
-                        "Unable to get transition config";
-                        "error" => ?e,
+                        "Execution client config mismatch";
+                        "msg" => "ensure lighthouse and the execution client are up-to-date and \
+                                  configured consistently",
                         "execution_endpoint" => i,
+                        "remote" => ?remote,
+                        "local" => ?local,
                     );
-                    errors.push(e);
+                    errors.push(EngineError::Api {
+                        id: i.to_string(),
+                        error: ApiError::TransitionConfigurationMismatch,
+                    });
+                } else {
+                    debug!(
+                        self.log(),
+                        "Execution client config is OK";
+                        "execution_endpoint" => i
+                    );
                 }
+            }
+            Err(e) => {
+                error!(
+                    self.log(),
+                    "Unable to get transition config";
+                    "error" => ?e,
+                    "execution_endpoint" => i,
+                );
+                errors.push(e);
             }
         }
 
@@ -1085,8 +1053,7 @@ impl ExecutionLayer {
             &[metrics::IS_VALID_TERMINAL_POW_BLOCK_HASH],
         );
 
-        let broadcast_results = self
-            .engines()
+        self.engines()
             .broadcast(|engine| async move {
                 if let Some(pow_block) = self.get_pow_block(engine, block_hash).await? {
                     if let Some(pow_parent) =
@@ -1099,38 +1066,8 @@ impl ExecutionLayer {
                 }
                 Ok(None)
             })
-            .await;
-
-        let mut errors = vec![];
-        let mut terminal = 0;
-        let mut not_terminal = 0;
-        let mut block_missing = 0;
-        for result in broadcast_results {
-            match result {
-                Ok(Some(true)) => terminal += 1,
-                Ok(Some(false)) => not_terminal += 1,
-                Ok(None) => block_missing += 1,
-                Err(e) => errors.push(e),
-            }
-        }
-
-        if terminal > 0 && not_terminal > 0 {
-            crit!(
-                self.log(),
-                "Consensus failure between execution nodes";
-                "method" => "is_valid_terminal_pow_block_hash"
-            );
-        }
-
-        if terminal > 0 {
-            Ok(Some(true))
-        } else if not_terminal > 0 {
-            Ok(Some(false))
-        } else if block_missing > 0 {
-            Ok(None)
-        } else {
-            Err(Error::EngineErrors(errors))
-        }
+            .await
+            .map_err(|e| Error::EngineErrors(vec![e]))
     }
 
     /// This function should remain internal.

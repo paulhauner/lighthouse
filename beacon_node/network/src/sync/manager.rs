@@ -38,7 +38,7 @@ use super::block_lookups::BlockLookups;
 use super::network_context::SyncNetworkContext;
 use super::peer_sync_info::{remote_sync_type, PeerSyncType};
 use super::range_sync::{RangeSync, RangeSyncType, EPOCHS_PER_BATCH};
-use crate::beacon_processor::{ChainSegmentProcessId, WorkEvent as BeaconWorkEvent};
+use crate::beacon_processor::{ChainSegmentProcessId, FailureMode, WorkEvent as BeaconWorkEvent};
 use crate::service::NetworkMessage;
 use crate::status::ToStatusMessage;
 use beacon_chain::{BeaconChain, BeaconChainTypes, BlockError};
@@ -88,12 +88,12 @@ pub enum SyncMessage<T: EthSpec> {
     RpcBlock {
         request_id: RequestId,
         peer_id: PeerId,
-        beacon_block: Option<Box<SignedBeaconBlock<T>>>,
+        beacon_block: Option<Arc<SignedBeaconBlock<T>>>,
         seen_timestamp: Duration,
     },
 
     /// A block with an unknown parent has been received.
-    UnknownBlock(PeerId, Box<SignedBeaconBlock<T>>),
+    UnknownBlock(PeerId, Arc<SignedBeaconBlock<T>>),
 
     /// A peer has sent an object that references a block that is unknown. This triggers the
     /// manager to attempt to find the block matching the unknown hash.
@@ -137,6 +137,7 @@ pub enum BatchProcessResult {
     Failed {
         imported_blocks: bool,
         peer_action: Option<PeerAction>,
+        mode: FailureMode,
     },
 }
 
@@ -228,17 +229,12 @@ impl<T: BeaconChainTypes> SyncManager<T> {
     /// ours that we consider it fully sync'd with respect to our current chain.
     fn add_peer(&mut self, peer_id: PeerId, remote: SyncInfo) {
         // ensure the beacon chain still exists
-        let local = match self.chain.status_message() {
-            Ok(status) => SyncInfo {
-                head_slot: status.head_slot,
-                head_root: status.head_root,
-                finalized_epoch: status.finalized_epoch,
-                finalized_root: status.finalized_root,
-            },
-            Err(e) => {
-                return error!(self.log, "Failed to get peer sync info";
-                    "msg" => "likely due to head lock contention", "err" => ?e)
-            }
+        let status = self.chain.status_message();
+        let local = SyncInfo {
+            head_slot: status.head_slot,
+            head_root: status.head_root,
+            finalized_epoch: status.finalized_epoch,
+            finalized_root: status.finalized_root,
         };
 
         let sync_type = remote_sync_type(&local, &remote, &self.chain);
@@ -327,10 +323,17 @@ impl<T: BeaconChainTypes> SyncManager<T> {
         if let Some(was_updated) = update_sync_status {
             let is_connected = self.network_globals.peers.read().is_connected(peer_id);
             if was_updated {
-                debug!(self.log, "Peer transitioned sync state"; "peer_id" => %peer_id, "new_state" => rpr,
-                    "our_head_slot" => local_sync_info.head_slot, "out_finalized_epoch" => local_sync_info.finalized_epoch,
-                    "their_head_slot" => remote_sync_info.head_slot, "their_finalized_epoch" => remote_sync_info.finalized_epoch,
-                    "is_connected" => is_connected);
+                debug!(
+                    self.log,
+                    "Peer transitioned sync state";
+                    "peer_id" => %peer_id,
+                    "new_state" => rpr,
+                    "our_head_slot" => local_sync_info.head_slot,
+                    "our_finalized_epoch" => local_sync_info.finalized_epoch,
+                    "their_head_slot" => remote_sync_info.head_slot,
+                    "their_finalized_epoch" => remote_sync_info.finalized_epoch,
+                    "is_connected" => is_connected
+                );
 
                 // A peer has transitioned its sync state. If the new state is "synced" we
                 // inform the backfill sync that a new synced peer has joined us.
@@ -371,7 +374,7 @@ impl<T: BeaconChainTypes> SyncManager<T> {
                     // advanced and will produce a head chain on re-status. Otherwise it will shift
                     // to being synced
                     let mut sync_state = {
-                        let head = self.chain.best_slot().unwrap_or_else(|_| Slot::new(0));
+                        let head = self.chain.best_slot();
                         let current_slot = self.chain.slot().unwrap_or_else(|_| Slot::new(0));
 
                         let peers = self.network_globals.peers.read();
@@ -474,11 +477,7 @@ impl<T: BeaconChainTypes> SyncManager<T> {
                     SyncMessage::UnknownBlock(peer_id, block) => {
                         // If we are not synced or within SLOT_IMPORT_TOLERANCE of the block, ignore
                         if !self.network_globals.sync_state.read().is_synced() {
-                            let head_slot = self
-                                .chain
-                                .head_info()
-                                .map(|info| info.slot)
-                                .unwrap_or_else(|_| Slot::from(0u64));
+                            let head_slot = self.chain.canonical_head.cached_head().head_slot();
                             let unknown_block_slot = block.slot();
 
                             // if the block is far in the future, ignore it. If its within the slot tolerance of
@@ -563,7 +562,7 @@ impl<T: BeaconChainTypes> SyncManager<T> {
         &mut self,
         request_id: RequestId,
         peer_id: PeerId,
-        beacon_block: Option<Box<SignedBeaconBlock<T::EthSpec>>>,
+        beacon_block: Option<Arc<SignedBeaconBlock<T::EthSpec>>>,
         seen_timestamp: Duration,
     ) {
         match request_id {
@@ -591,7 +590,7 @@ impl<T: BeaconChainTypes> SyncManager<T> {
                         batch_id,
                         &peer_id,
                         id,
-                        beacon_block.map(|b| *b),
+                        beacon_block,
                     ) {
                         Ok(ProcessResult::SyncCompleted) => self.update_sync_state(),
                         Ok(ProcessResult::Successful) => {}
@@ -613,7 +612,7 @@ impl<T: BeaconChainTypes> SyncManager<T> {
                         chain_id,
                         batch_id,
                         id,
-                        beacon_block.map(|b| *b),
+                        beacon_block,
                     );
                     self.update_sync_state();
                 }
