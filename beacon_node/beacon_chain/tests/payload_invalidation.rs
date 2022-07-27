@@ -44,7 +44,11 @@ struct InvalidPayloadRig {
 
 impl InvalidPayloadRig {
     fn new() -> Self {
-        let mut spec = E::default_spec();
+        let spec = E::default_spec();
+        Self::new_with_spec(spec)
+    }
+
+    fn new_with_spec(mut spec: ChainSpec) -> Self {
         spec.altair_fork_epoch = Some(Epoch::new(0));
         spec.bellatrix_fork_epoch = Some(Epoch::new(0));
 
@@ -1192,8 +1196,10 @@ struct OptimisticTransitionSetup {
 }
 
 impl OptimisticTransitionSetup {
-    async fn new(num_blocks: usize) -> Self {
-        let mut rig = InvalidPayloadRig::new().enable_attestations();
+    async fn new(num_blocks: usize, ttd: u64) -> Self {
+        let mut spec = E::default_spec();
+        spec.terminal_total_difficulty = ttd.into();
+        let mut rig = InvalidPayloadRig::new_with_spec(spec).enable_attestations();
         rig.move_to_terminal_block();
 
         let mut blocks = Vec::with_capacity(num_blocks);
@@ -1209,11 +1215,158 @@ impl OptimisticTransitionSetup {
 
 #[tokio::test]
 async fn optimistic_transition_block() {
-    let OptimisticTransitionSetup { blocks } = OptimisticTransitionSetup::new(3).await;
+    let ttd = 42;
+    let OptimisticTransitionSetup { blocks } = OptimisticTransitionSetup::new(3, ttd).await;
 
     // Build a brand-new testing harness. We will apply the blocks from the previous harness to
     // this one.
-    let rig = InvalidPayloadRig::new();
+    let mut spec = E::default_spec();
+    spec.terminal_total_difficulty = ttd.into();
+    let rig = InvalidPayloadRig::new_with_spec(spec);
+    let spec = &rig.harness.chain.spec;
+    let mock_execution_layer = rig.harness.mock_execution_layer.as_ref().unwrap();
+
+    // Make the execution layer respond `SYNCING` to all `newPayload` requests.
+    mock_execution_layer
+        .server
+        .all_payloads_syncing_on_new_payload(true);
+    // Make the execution layer respond `SYNCING` to all `forkchoiceUpdated` requests.
+    mock_execution_layer
+        .server
+        .all_payloads_syncing_on_forkchoice_updated();
+    // Make the execution layer respond `None` to all `getBlockByHash` requests.
+    mock_execution_layer
+        .server
+        .all_get_block_by_hash_requests_return_none();
+
+    rig.harness
+        .set_current_slot(blocks[0].slot() + spec.safe_slots_to_import_optimistically);
+
+    for block in blocks {
+        rig.harness.chain.process_block(block).await.unwrap();
+    }
+
+    rig.harness
+        .chain
+        .recompute_head_at_current_slot()
+        .await
+        .unwrap();
+
+    // Perform some sanity checks to ensure that the transition happened exactly where we expected.
+    let pre_transition_block_root = rig
+        .harness
+        .chain
+        .block_root_at_slot(Slot::new(0), WhenSlotSkipped::None)
+        .unwrap()
+        .unwrap();
+    let pre_transition_block = rig
+        .harness
+        .chain
+        .get_block(&pre_transition_block_root)
+        .await
+        .unwrap()
+        .unwrap();
+    let post_transition_block_root = rig
+        .harness
+        .chain
+        .block_root_at_slot(Slot::new(1), WhenSlotSkipped::None)
+        .unwrap()
+        .unwrap();
+    let post_transition_block = rig
+        .harness
+        .chain
+        .get_block(&post_transition_block_root)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        pre_transition_block_root,
+        post_transition_block.parent_root(),
+        "the blocks form a single chain"
+    );
+    assert!(
+        pre_transition_block
+            .message()
+            .body()
+            .execution_payload()
+            .unwrap()
+            .execution_payload
+            == <_>::default(),
+        "the block *has not* undergone the merge transition"
+    );
+    assert!(
+        post_transition_block
+            .message()
+            .body()
+            .execution_payload()
+            .unwrap()
+            .execution_payload
+            != <_>::default(),
+        "the block *has* undergone the merge transition"
+    );
+
+    // Assert that the transition block was optimistically imported.
+    assert!(
+        rig.harness
+            .chain
+            .canonical_head
+            .fork_choice_read_lock()
+            .is_optimistic_block_no_fallback(&post_transition_block_root)
+            .unwrap(),
+        "the transition block should be imported optimistically"
+    );
+
+    // Get the mock execution layer to respond to `getBlockByHash` requests normally again.
+    mock_execution_layer
+        .server
+        .all_get_block_by_hash_requests_return_natural_value();
+    // Advance the local execution layer to the terminal block.
+    mock_execution_layer
+        .server
+        .execution_block_generator()
+        .move_to_terminal_block()
+        .unwrap();
+
+    // In theory, you should be able to retrospectively validate the transition block now.
+
+    let otbs = load_optimistic_transition_blocks(&rig.harness.chain)
+        .expect("should load optimistic transition block from db");
+    assert_eq!(
+        otbs.len(),
+        1,
+        "There should be one optimistic transition block"
+    );
+    let valid_otb = OptimisticTransitionBlock::from_block(post_transition_block.message());
+    assert_eq!(
+        valid_otb, otbs[0],
+        "The optimistic transition block stored in the database should be what we expect",
+    );
+
+    validate_optimistic_transition_blocks(&rig.harness.chain, otbs)
+        .await
+        .expect("should validate fine");
+    // now that the transition block has been validated, it should have been removed from the database
+    let otbs = load_optimistic_transition_blocks(&rig.harness.chain)
+        .expect("should load optimistic transition block from db");
+    assert!(
+        otbs.is_empty(),
+        "The valid optimistic transition block should have been removed from the database",
+    );
+}
+
+#[tokio::test]
+async fn optimistic_transition_block_invalid() {
+    let block_ttd = 42;
+    let rig_ttd = 1337;
+    let OptimisticTransitionSetup { blocks } = OptimisticTransitionSetup::new(3, block_ttd).await;
+
+    // Build a brand-new testing harness. We will apply the blocks from the previous harness to
+    // this one.
+    //
+    // This testing harness will have a different TTD to the chain which built the blocks.
+    let mut spec = E::default_spec();
+    spec.terminal_total_difficulty = rig_ttd.into();
+    let rig = InvalidPayloadRig::new_with_spec(spec);
     let spec = &rig.harness.chain.spec;
     let mock_execution_layer = rig.harness.mock_execution_layer.as_ref().unwrap();
 
