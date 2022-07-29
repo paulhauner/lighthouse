@@ -180,7 +180,9 @@ pub async fn validate_merge_block<'a, T: BeaconChainTypes>(
     let is_valid_terminal_pow_block = execution_layer
         .is_valid_terminal_pow_block_hash(execution_payload.parent_hash(), spec)
         .await
-        .map_err(ExecutionPayloadError::from)?;
+        .map_err(ExecutionPayloadError::from);
+    println!("is_valid_terminal_pow_block result: {:?}", is_valid_terminal_pow_block);
+    let is_valid_terminal_pow_block = is_valid_terminal_pow_block?;
 
     match is_valid_terminal_pow_block {
         Some(true) => Ok(()),

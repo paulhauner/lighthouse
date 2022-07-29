@@ -1106,6 +1106,12 @@ impl<T: EthSpec> ExecutionLayer<T> {
         parent: ExecutionBlock,
         spec: &ChainSpec,
     ) -> bool {
+        println!("inside is_valid_terminal_pow_block:");
+        println!("    block.hash:                {}", block.block_hash);
+        println!("    parent.hash:               {}", parent.block_hash);
+        println!("    block.total_difficulty:    {}", block.total_difficulty);
+        println!("    parent.total_difficulty:   {}", parent.total_difficulty);
+        println!("    terminal_total_difficulty: {}", spec.terminal_total_difficulty);
         let is_total_difficulty_reached = block.total_difficulty >= spec.terminal_total_difficulty;
         let is_parent_total_difficulty_valid =
             parent.total_difficulty < spec.terminal_total_difficulty;

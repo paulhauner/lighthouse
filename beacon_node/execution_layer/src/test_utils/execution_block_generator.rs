@@ -295,16 +295,23 @@ impl<T: EthSpec> ExecutionBlockGenerator<T> {
 
     pub fn new_payload(&mut self, payload: ExecutionPayload<T>) -> PayloadStatusV1 {
         let parent = if let Some(parent) = self.blocks.get(&payload.parent_hash) {
-            parent
+            parent.clone()
         } else {
-            return PayloadStatusV1 {
-                status: PayloadStatusV1Status::Syncing,
-                latest_valid_hash: None,
-                validation_error: None,
-            };
+            println!("new_payload: unknown parent[{}] for block [{}]", payload.parent_hash, payload.block_hash);
+            if let Some(parent) = self.pending_payloads.get(&payload.parent_hash) {
+                println!("    found in pending_payloads!");
+                Block::PoS(parent.clone())
+            } else {
+                return PayloadStatusV1 {
+                    status: PayloadStatusV1Status::Syncing,
+                    latest_valid_hash: None,
+                    validation_error: None,
+                };
+            }
         };
 
         if payload.block_number != parent.block_number() + 1 {
+            println!("new_payload: parent block number incontiguous: {:?}", payload);
             return PayloadStatusV1 {
                 status: PayloadStatusV1Status::Invalid,
                 latest_valid_hash: Some(parent.block_hash()),

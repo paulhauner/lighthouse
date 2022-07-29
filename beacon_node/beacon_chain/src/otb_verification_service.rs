@@ -1,5 +1,5 @@
 use crate::execution_payload::validate_merge_block;
-use crate::{BeaconChain, BeaconChainError, BeaconChainTypes, BlockError, ExecutionPayloadError};
+use crate::{BeaconChain, BeaconChainError, BeaconChainTypes, BlockError, ExecutionPayloadError, INVALID_FINALIZED_MERGE_TRANSITION_BLOCK_SHUTDOWN_REASON};
 use itertools::process_results;
 use proto_array::InvalidationOperation;
 use slog::{crit, debug, error, info, warn};
@@ -167,6 +167,10 @@ pub async fn validate_optimistic_transition_blocks<T: BeaconChainTypes>(
     )
     .map_err(Error::BeaconChain)?;
 
+    println!("non_canonical_otbs: {:?}", non_canonical_otbs);
+    println!("unfinalized canonical_otbs: {:?}", unfinalized_canonical_otbs);
+    println!("finalized canonical_otbs: {:?}", finalized_canonical_otbs);
+
     // remove non-canonical blocks that conflict with finalized checkpoint from the database
     for otb in non_canonical_otbs {
         if *otb.slot() <= finalized_slot {
@@ -196,14 +200,14 @@ pub async fn validate_optimistic_transition_blocks<T: BeaconChainTypes>(
                         // Finalized Merge Transition Block is Invalid! Kill the Client!
                         crit!(
                             chain.log,
-                            "Finalized Merge Transition Block is Invalid!";
+                            "Finalized merge transition block is invalid!";
                             "msg" => "You must use the `--purge-db` flag to clear the database and restart sync. \
                             You may be on a hostile network.",
                             "block_hash" => ?block.canonical_root()
                         );
                         let mut shutdown_sender = chain.shutdown_sender();
                         if let Err(e) = shutdown_sender.try_send(ShutdownReason::Failure(
-                            "Finalized Merge Transition Block is Invalid",
+                            INVALID_FINALIZED_MERGE_TRANSITION_BLOCK_SHUTDOWN_REASON,
                         )) {
                             crit!(chain.log, "Failed to shut down client: {:?}", e);
                         }
