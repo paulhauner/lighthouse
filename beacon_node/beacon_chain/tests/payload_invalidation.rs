@@ -1357,12 +1357,15 @@ async fn build_optimistic_chain(
     );
 
     // Assert that the transition block was optimistically imported.
+    //
+    // Note: we're using the "fallback" check for optimistic status, so if the block was
+    // pre-finality then we'll just use the optimistic status of the finalized block.
     assert!(
         rig.harness
             .chain
             .canonical_head
             .fork_choice_read_lock()
-            .is_optimistic_block_no_fallback(&post_transition_block_root)
+            .is_optimistic_block(&post_transition_block_root)
             .unwrap(),
         "the transition block should be imported optimistically"
     );
