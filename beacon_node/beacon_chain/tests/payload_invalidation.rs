@@ -1193,7 +1193,6 @@ async fn attesting_to_optimistic_head() {
 
 /// A helper struct to build out a chain of some configurable length which undergoes the merge
 /// transition.
-use execution_layer::test_utils::Block;
 struct OptimisticTransitionSetup {
     blocks: Vec<Arc<SignedBeaconBlock<E>>>,
     execution_block_generator: ExecutionBlockGenerator<E>,
