@@ -194,7 +194,12 @@ pub async fn validate_optimistic_transition_blocks<T: BeaconChainTypes>(
                         // merge transition block is valid, remove it from OTB
                         otb.remove_from_store::<T, _>(&chain.store)
                             .map_err(Error::StoreError)?;
-                        info!(chain.log, "Validated merge transition block");
+                        info!(
+                            chain.log,
+                            "Validated merge transition block";
+                            "block_root" => ?otb.root(),
+                            "type" => "finalized"
+                        );
                     }
                     Err(BlockError::ExecutionPayloadError(
                         ExecutionPayloadError::InvalidTerminalPoWBlock { .. },
@@ -211,7 +216,12 @@ pub async fn validate_optimistic_transition_blocks<T: BeaconChainTypes>(
                         if let Err(e) = shutdown_sender.try_send(ShutdownReason::Failure(
                             INVALID_FINALIZED_MERGE_TRANSITION_BLOCK_SHUTDOWN_REASON,
                         )) {
-                            crit!(chain.log, "Failed to shut down client: {:?}", e);
+                            crit!(
+                                chain.log,
+                                "Failed to shut down client";
+                                "error" => ?e,
+                                "shutdown_reason" => INVALID_FINALIZED_MERGE_TRANSITION_BLOCK_SHUTDOWN_REASON
+                            );
                         }
                     }
                     _ => {}
@@ -234,22 +244,36 @@ pub async fn validate_optimistic_transition_blocks<T: BeaconChainTypes>(
                         // merge transition block is valid, remove it from OTB
                         otb.remove_from_store::<T, _>(&chain.store)
                             .map_err(Error::StoreError)?;
-                        info!(chain.log, "Validated merge transition block");
+                        info!(
+                            chain.log,
+                            "Validated merge transition block";
+                            "block_root" => ?otb.root(),
+                            "type" => "not finalized"
+                        );
                     }
                     Err(BlockError::ExecutionPayloadError(
                         ExecutionPayloadError::InvalidTerminalPoWBlock { .. },
                     )) => {
                         // Unfinalized Merge Transition Block is Invalid -> Run process_invalid_execution_payload
-                        warn!(chain.log, "Merge transition block invalid: {:?}", otb);
+                        warn!(
+                            chain.log,
+                            "Merge transition block invalid";
+                            "block_root" => ?otb.root()
+                        );
                         chain
                             .process_invalid_execution_payload(
                                 &InvalidationOperation::InvalidateOne {
                                     block_root: *otb.root(),
-                                }
+                                },
                             )
                             .await
                             .map_err(|e| {
-                                warn!(chain.log, "Error during process_invalid_execution_payload for invalid merge transition block: {:?}", e);
+                                warn!(
+                                    chain.log,
+                                    "Error checking merge transition block";
+                                    "error" => ?e,
+                                    "location" => "process_invalid_execution_payload"
+                                );
                                 Error::BeaconChain(e)
                             })?;
                     }
@@ -300,13 +324,18 @@ async fn otb_verification_service<T: BeaconChainTypes>(chain: Arc<BeaconChain<T>
                             break;
                         }
                         if let Err(e) = validate_optimistic_transition_blocks(&chain, otbs).await {
-                            warn!(chain.log, "Error occurred while validating optimistic transition blocks: {:?}", e);
+                            warn!(
+                                chain.log,
+                                "Error while validating optimistic transition blocks";
+                                "error" => ?e
+                            );
                         }
                     }
                     Err(e) => {
                         error!(
                             chain.log,
-                            "Error loading optimistic transition blocks: {:?}", e
+                            "Error loading optimistic transition blocks";
+                            "error" => ?e
                         );
                     }
                 };
@@ -318,5 +347,9 @@ async fn otb_verification_service<T: BeaconChainTypes>(chain: Arc<BeaconChain<T>
             }
         };
     }
-    debug!(chain.log, "No optimistic transition blocks in database"; "msg" => "shutting down OTB verification service");
+    debug!(
+        chain.log,
+        "No optimistic transition blocks in database";
+        "msg" => "shutting down OTB verification service"
+    );
 }
