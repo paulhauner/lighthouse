@@ -105,6 +105,7 @@ pub struct PoWBlock {
     pub timestamp: u64,
 }
 
+#[derive(Clone)]
 pub struct ExecutionBlockGenerator<T: EthSpec> {
     /*
      * Common database
@@ -297,7 +298,10 @@ impl<T: EthSpec> ExecutionBlockGenerator<T> {
         let parent = if let Some(parent) = self.blocks.get(&payload.parent_hash) {
             parent.clone()
         } else {
-            println!("new_payload: unknown parent[{}] for block [{}]", payload.parent_hash, payload.block_hash);
+            println!(
+                "new_payload: unknown parent[{}] for block [{}]",
+                payload.parent_hash, payload.block_hash
+            );
             if let Some(parent) = self.pending_payloads.get(&payload.parent_hash) {
                 println!("    found in pending_payloads!");
                 Block::PoS(parent.clone())
@@ -311,7 +315,10 @@ impl<T: EthSpec> ExecutionBlockGenerator<T> {
         };
 
         if payload.block_number != parent.block_number() + 1 {
-            println!("new_payload: parent block number incontiguous: {:?}", payload);
+            println!(
+                "new_payload: parent block number incontiguous: {:?}",
+                payload
+            );
             return PayloadStatusV1 {
                 status: PayloadStatusV1Status::Invalid,
                 latest_valid_hash: Some(parent.block_hash()),

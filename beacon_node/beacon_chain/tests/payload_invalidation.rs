@@ -7,10 +7,12 @@ use beacon_chain::otb_verification_service::{
 use beacon_chain::{
     test_utils::{BeaconChainHarness, EphemeralHarnessType},
     BeaconChainError, BlockError, ExecutionPayloadError, StateSkipConfig, WhenSlotSkipped,
-    INVALID_JUSTIFIED_PAYLOAD_SHUTDOWN_REASON, INVALID_FINALIZED_MERGE_TRANSITION_BLOCK_SHUTDOWN_REASON,
+    INVALID_FINALIZED_MERGE_TRANSITION_BLOCK_SHUTDOWN_REASON,
+    INVALID_JUSTIFIED_PAYLOAD_SHUTDOWN_REASON,
 };
 use execution_layer::{
     json_structures::{JsonForkChoiceStateV1, JsonPayloadAttributesV1},
+    test_utils::ExecutionBlockGenerator,
     ExecutionLayer, ForkChoiceState, PayloadAttributes,
 };
 use fork_choice::{Error as ForkChoiceError, InvalidationOperation, PayloadVerificationStatus};
@@ -1194,7 +1196,7 @@ async fn attesting_to_optimistic_head() {
 use execution_layer::test_utils::Block;
 struct OptimisticTransitionSetup {
     blocks: Vec<Arc<SignedBeaconBlock<E>>>,
-    execution_blocks: Vec<Block<E>>
+    execution_block_generator: ExecutionBlockGenerator<E>,
 }
 
 impl OptimisticTransitionSetup {
@@ -1204,13 +1206,23 @@ impl OptimisticTransitionSetup {
         let mut rig = InvalidPayloadRig::new_with_spec(spec).enable_attestations();
         rig.move_to_terminal_block();
 
-        let mut execution_blocks = vec![];
-        let mut block = rig.harness.mock_execution_layer.as_ref().unwrap().server.execution_block_generator().latest_block();
+        let mut block = rig
+            .harness
+            .mock_execution_layer
+            .as_ref()
+            .unwrap()
+            .server
+            .execution_block_generator()
+            .latest_block();
         while let Some(exec_block) = &block {
-            execution_blocks.push(exec_block.clone());
-            block = rig.harness.mock_execution_layer.as_ref().unwrap().server.get_block(exec_block.parent_hash());
+            block = rig
+                .harness
+                .mock_execution_layer
+                .as_ref()
+                .unwrap()
+                .server
+                .get_block(exec_block.parent_hash());
         }
-        execution_blocks.sort_by(|a, b| a.block_number().partial_cmp(&b.block_number()).unwrap());
 
         let mut blocks = Vec::with_capacity(num_blocks);
         for _ in 0..num_blocks {
@@ -1219,13 +1231,31 @@ impl OptimisticTransitionSetup {
             blocks.push(Arc::new(block));
         }
 
-        Self { blocks, execution_blocks }
+        let execution_block_generator = rig
+            .harness
+            .mock_execution_layer
+            .as_ref()
+            .unwrap()
+            .server
+            .execution_block_generator()
+            .clone();
+
+        Self {
+            blocks,
+            execution_block_generator,
+        }
     }
 }
 
-async fn build_optimistic_chain(block_ttd: u64, rig_ttd: u64, num_blocks: usize) -> InvalidPayloadRig {
-    let OptimisticTransitionSetup { blocks, execution_blocks } =
-        OptimisticTransitionSetup::new(num_blocks, block_ttd).await;
+async fn build_optimistic_chain(
+    block_ttd: u64,
+    rig_ttd: u64,
+    num_blocks: usize,
+) -> InvalidPayloadRig {
+    let OptimisticTransitionSetup {
+        blocks,
+        execution_block_generator,
+    } = OptimisticTransitionSetup::new(num_blocks, block_ttd).await;
     // Build a brand-new testing harness. We will apply the blocks from the previous harness to
     // this one.
     let mut spec = E::default_spec();
@@ -1234,6 +1264,9 @@ async fn build_optimistic_chain(block_ttd: u64, rig_ttd: u64, num_blocks: usize)
 
     let spec = &rig.harness.chain.spec;
     let mock_execution_layer = rig.harness.mock_execution_layer.as_ref().unwrap();
+
+    // Ensure all the execution blocks from the first rig are available in the second rig.
+    *mock_execution_layer.server.execution_block_generator() = execution_block_generator;
 
     // Make the execution layer respond `SYNCING` to all `newPayload` requests.
     mock_execution_layer
@@ -1250,19 +1283,10 @@ async fn build_optimistic_chain(block_ttd: u64, rig_ttd: u64, num_blocks: usize)
 
     let current_slot = std::cmp::max(
         blocks[0].slot() + spec.safe_slots_to_import_optimistically,
-        num_blocks.into()
+        num_blocks.into(),
     );
 
-    rig.harness
-        .set_current_slot(current_slot);
-    mock_execution_layer.server.execution_block_generator().drop_all_blocks();
-    // insert the execution blocks from the other chain
-    println!("EARLY execution_block_generator_blocks:");
-    for exec_block in execution_blocks {
-        println!("    ({},{})", exec_block.block_number(), exec_block.block_hash());
-        //mock_execution_layer.server.execution_block_generator().insert_block_by_hash_only(exec_block).unwrap();
-        mock_execution_layer.server.execution_block_generator().insert_block(exec_block).unwrap();
-    }
+    rig.harness.set_current_slot(current_slot);
 
     for block in blocks {
         rig.harness.chain.process_block(block).await.unwrap();
@@ -1426,33 +1450,67 @@ async fn optimistic_transition_block_invalid() {
         .execution_payload()
         .unwrap()
         .execution_payload;
-    println!("transition block execution hash:   {:?}", exec_payload.block_hash);
-    println!("transition block execution parent: {:?}", exec_payload.parent_hash);
+    println!(
+        "transition block execution hash:   {:?}",
+        exec_payload.block_hash
+    );
+    println!(
+        "transition block execution parent: {:?}",
+        exec_payload.parent_hash
+    );
 
-    let merge_transition_exec_block = rig.harness.mock_execution_layer.as_ref().unwrap().server.get_block(exec_payload.block_hash);
-    let terminal_pow_exec_block = rig.harness.mock_execution_layer.as_ref().unwrap().server.get_block(exec_payload.parent_hash);
-    let server_context = rig.harness.mock_execution_layer.as_ref().unwrap().server.ctx.clone();
-    let pending_transition_exec_block = server_context.execution_block_generator.read().pending_payloads.get(&exec_payload.block_hash).cloned();
-    let pending_terminal_pow_exec_block = server_context.execution_block_generator.read().pending_payloads.get(&exec_payload.parent_hash).cloned();
+    let merge_transition_exec_block = rig
+        .harness
+        .mock_execution_layer
+        .as_ref()
+        .unwrap()
+        .server
+        .get_block(exec_payload.block_hash);
+    let terminal_pow_exec_block = rig
+        .harness
+        .mock_execution_layer
+        .as_ref()
+        .unwrap()
+        .server
+        .get_block(exec_payload.parent_hash);
+    let server_context = rig
+        .harness
+        .mock_execution_layer
+        .as_ref()
+        .unwrap()
+        .server
+        .ctx
+        .clone();
+    let pending_transition_exec_block = server_context
+        .execution_block_generator
+        .read()
+        .pending_payloads
+        .get(&exec_payload.block_hash)
+        .cloned();
+    let pending_terminal_pow_exec_block = server_context
+        .execution_block_generator
+        .read()
+        .pending_payloads
+        .get(&exec_payload.parent_hash)
+        .cloned();
 
-    let mut execution_blocks = vec![];
-    let mut block = rig.harness.mock_execution_layer.as_ref().unwrap().server.execution_block_generator().latest_block();
-    while let Some(exec_block) = &block {
-        execution_blocks.push(exec_block.clone());
-        block = rig.harness.mock_execution_layer.as_ref().unwrap().server.get_block(exec_block.parent_hash());
-    }
-    execution_blocks.reverse();
-
-    println!("execution_block_generator_blocks:");
-    for block in execution_blocks {
-        println!("    ({}, {})", block.block_number(), block.block_hash());
-    }
-
-    println!("merge_transition_exec_block: {:?}", merge_transition_exec_block);
+    println!(
+        "merge_transition_exec_block: {:?}",
+        merge_transition_exec_block
+    );
     println!("terminal_pow_exec_block: {:?}", terminal_pow_exec_block);
-    println!("pending_transition_exec_block: {:?}", pending_transition_exec_block);
-    println!("pending_terminal_pow_exec_block: {:?}", pending_terminal_pow_exec_block);
-    let latest_execution_block = server_context.execution_block_generator.read().latest_execution_block();
+    println!(
+        "pending_transition_exec_block: {:?}",
+        pending_transition_exec_block
+    );
+    println!(
+        "pending_terminal_pow_exec_block: {:?}",
+        pending_terminal_pow_exec_block
+    );
+    let latest_execution_block = server_context
+        .execution_block_generator
+        .read()
+        .latest_execution_block();
     println!("latest_execution_block: {:?}", latest_execution_block);
 
     // In theory, you should be able to retrospectively validate the transition block now.
@@ -1470,10 +1528,7 @@ async fn optimistic_transition_block_invalid() {
     );
 
     // No shutdown should've been triggered yet.
-    assert_eq!(
-        rig.harness.shutdown_reasons(),
-        vec![]
-    );
+    assert_eq!(rig.harness.shutdown_reasons(), vec![]);
 
     validate_optimistic_transition_blocks(&rig.harness.chain, otbs)
         .await
