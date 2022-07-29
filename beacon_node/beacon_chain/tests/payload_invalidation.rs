@@ -1274,6 +1274,11 @@ async fn build_optimistic_chain(block_ttd: u64, rig_ttd: u64, num_blocks: usize)
         .await
         .unwrap();
 
+    // Make the execution layer respond normally to `getBlockByHash` requests.
+    mock_execution_layer
+        .server
+        .all_get_block_by_hash_requests_return_natural_value();
+
     // Perform some sanity checks to ensure that the transition happened exactly where we expected.
     let pre_transition_block_root = rig
         .harness
