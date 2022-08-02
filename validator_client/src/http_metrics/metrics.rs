@@ -172,6 +172,14 @@ lazy_static::lazy_static! {
         "Duration to obtain a signature",
         &["type"]
     );
+
+    /*
+     * Builder metrics
+     */
+    pub static ref BLINDED_PROPOSAL_FAILURES: Result<IntCounter> = try_create_int_counter(
+        "vc_blinded_proposal_failures",
+        "Total count of failures to produce a blinded block",
+    );
 }
 
 pub fn gather_prometheus_metrics<T: EthSpec>(

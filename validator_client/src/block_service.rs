@@ -247,8 +247,9 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
                             .await;
                         match result.as_ref() {
                             Err(BlockError::Recoverable(e)) => {
-                                error!(log, "Error whilst producing a blinded block, attempting to \
+                                warn!(log, "Error whilst producing a blinded block, attempting to \
                                     publish full block"; "error" => ?e);
+                                metrics::inc_counter(&metrics::BLINDED_PROPOSAL_FAILURES);
                                 result = service
                                     .publish_block::<FullPayload<E>>(slot, validator_pubkey)
                                     .await;
