@@ -38,8 +38,6 @@ pub fn hash32_concat(h1: &[u8], h2: &[u8]) -> [u8; 32] {
 
 /// Compute the hash of 64 bytes. The function will panic if the slice is not 64 bytes.
 pub fn hash_64_bytes(bytes: &[u8]) -> [u8; HASH_LEN] {
-    assert_eq!(bytes.len(), 64);
-
     #[cfg(target_arch = "x86_64")]
     {
         if sha2_fixed_64::x86::cpu_is_supported() {
