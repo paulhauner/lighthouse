@@ -1,5 +1,5 @@
 use super::{get_zero_hash, Hash256, BYTES_PER_CHUNK};
-use eth2_hashing::{hash32_concat, hash_fixed};
+use eth2_hashing::{hash32_concat, hash_64_bytes};
 
 /// Merkleize `bytes` and return the root, optionally padding the tree out to `min_leaves` number of
 /// leaves.
@@ -79,7 +79,7 @@ pub fn merkleize_padded(bytes: &[u8], min_leaves: usize) -> Hash256 {
         // Hash two chunks, creating a parent chunk.
         let hash = match bytes.get(start..start + BYTES_PER_CHUNK * 2) {
             // All bytes are available, hash as usual.
-            Some(slice) => hash_fixed(slice),
+            Some(slice) => hash_64_bytes(slice),
             // Unable to get all the bytes, get a small slice and pad it out.
             None => {
                 let mut preimage = bytes
@@ -87,7 +87,7 @@ pub fn merkleize_padded(bytes: &[u8], min_leaves: usize) -> Hash256 {
                     .expect("`i` can only be larger than zero if there are bytes to read")
                     .to_vec();
                 preimage.resize(BYTES_PER_CHUNK * 2, 0);
-                hash_fixed(&preimage)
+                hash_64_bytes(&preimage)
             }
         };
 

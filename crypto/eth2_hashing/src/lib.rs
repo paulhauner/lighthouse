@@ -30,14 +30,14 @@ pub fn hash_fixed(input: &[u8]) -> [u8; HASH_LEN] {
 
 /// Compute the hash of two slices concatenated.
 pub fn hash32_concat(h1: &[u8], h2: &[u8]) -> [u8; 32] {
-    let mut ctxt = DynamicContext::new();
-    ctxt.update(h1);
-    ctxt.update(h2);
-    ctxt.finalize()
+    let mut bytes = [0; 64];
+    bytes[..32].copy_from_slice(h1);
+    bytes[32..].copy_from_slice(h2);
+    hash_64_bytes(&bytes)
 }
 
 /// Compute the hash of 64 bytes. The function will panic if the slice is not 64 bytes.
-pub fn hash_64_bytes(bytes: &[u8]) -> [u8; 32] {
+pub fn hash_64_bytes(bytes: &[u8]) -> [u8; HASH_LEN] {
     assert_eq!(bytes.len(), 64);
 
     #[cfg(target_arch = "x86_64")]
@@ -45,12 +45,45 @@ pub fn hash_64_bytes(bytes: &[u8]) -> [u8; 32] {
         if sha2_fixed_64::x86::cpu_is_supported() {
             sha2_fixed_64::x86::sha256(bytes)
         } else {
-            hash32_concat(&bytes[..32], &bytes[32..])
+            hash_bytes(bytes)
         }
     }
 
     #[cfg(not(target_arch = "x86_64"))]
-    hash32_concat(bytes[..32], bytes[32..])
+    hash_bytes(bytes)
+}
+
+#[inline]
+pub fn hash_bytes(bytes: &[u8]) -> [u8; 32] {
+    let mut ctxt = DynamicContext::new();
+    ctxt.update(bytes);
+    ctxt.finalize()
+}
+
+pub struct Sha25664ByteContext([u8; 64]);
+
+impl Default for Sha25664ByteContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Sha25664ByteContext {
+    pub fn new() -> Self {
+        Self([0; 64])
+    }
+
+    pub fn update_left(&mut self, bytes: &[u8]) {
+        self.0[..32].copy_from_slice(bytes);
+    }
+
+    pub fn update_right(&mut self, bytes: &[u8]) {
+        self.0[32..].copy_from_slice(bytes);
+    }
+
+    pub fn finalize(self) -> [u8; HASH_LEN] {
+        hash_64_bytes(&self.0)
+    }
 }
 
 /// Context trait for abstracting over implementation contexts.

@@ -1,5 +1,5 @@
 use crate::{get_zero_hash, Hash256, HASHSIZE};
-use eth2_hashing::{Context, Sha256Context, HASH_LEN};
+use eth2_hashing::{Sha25664ByteContext, HASH_LEN};
 use smallvec::{smallvec, SmallVec};
 use std::mem;
 
@@ -32,7 +32,7 @@ impl<'a> Preimage<'a> {
 /// A node that has had a left child supplied, but not a right child.
 struct HalfNode {
     /// The hasher context.
-    context: Context,
+    context: Sha25664ByteContext,
     /// The tree id of the node. The root node has in id of `1` and ids increase moving down the
     /// tree from left to right.
     id: usize,
@@ -41,8 +41,8 @@ struct HalfNode {
 impl HalfNode {
     /// Create a new half-node from the given `left` value.
     fn new(id: usize, left: Preimage) -> Self {
-        let mut context = Context::new();
-        context.update(left.as_bytes());
+        let mut context = Sha25664ByteContext::new();
+        context.update_left(left.as_bytes());
 
         Self { context, id }
     }
@@ -50,7 +50,7 @@ impl HalfNode {
     /// Complete the half-node by providing a `right` value. Returns a digest of the left and right
     /// nodes.
     fn finish(mut self, right: Preimage) -> [u8; HASH_LEN] {
-        self.context.update(right.as_bytes());
+        self.context.update_right(right.as_bytes());
         self.context.finalize()
     }
 }
