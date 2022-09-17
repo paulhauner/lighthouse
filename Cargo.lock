@@ -1740,6 +1740,7 @@ dependencies = [
  "ring",
  "rustc-hex",
  "sha2 0.10.2",
+ "sha2_fixed_64",
  "wasm-bindgen-test",
 ]
 
@@ -5885,6 +5886,14 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest 0.10.3",
+]
+
+[[package]]
+name = "sha2_fixed_64"
+version = "0.0.0"
+source = "git+https://github.com/sigp/sha2_fixed_64?rev=18775f58b1cd20b4bc7ff4d96f3e3e1247f3c9d6#18775f58b1cd20b4bc7ff4d96f3e3e1247f3c9d6"
+dependencies = [
+ "cpufeatures",
 ]
 
 [[package]]

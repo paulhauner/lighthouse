@@ -11,6 +11,7 @@ lazy_static = { version = "1.4.0", optional = true }
 cpufeatures = { version = "0.2.2", optional = true }
 ring = "0.16.19"
 sha2 = "0.10.2"
+sha2_fixed_64 = { git = "https://github.com/sigp/sha2_fixed_64", rev = "18775f58b1cd20b4bc7ff4d96f3e3e1247f3c9d6" }
 
 [dev-dependencies]
 rustc-hex = "2.1.0"
