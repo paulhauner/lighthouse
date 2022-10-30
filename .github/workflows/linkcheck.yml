@@ -11,7 +11,7 @@ on:
 jobs:
   linkcheck:
     name: Check broken links
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
