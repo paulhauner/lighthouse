@@ -18,7 +18,7 @@ mod skip_slots;
 mod transition_blocks;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
-use clap_utils::parse_path_with_default_in_home_dir;
+use clap_utils::{get_eth2_network_config, parse_path_with_default_in_home_dir};
 use environment::{EnvironmentBuilder, LoggerConfig};
 use parse_ssz::run_parse_ssz;
 use std::path::PathBuf;
@@ -758,6 +758,16 @@ fn main() {
                 be used for testing and development on testnets. Do not use in production. Do not \
                 use on mainnet.")
                 .arg(
+                        Arg::with_name("network")
+                            .long("network")
+                            .value_name("network")
+                            .help("Name of the Eth2 chain Lighthouse will sync and follow.")
+                            .possible_values(eth2_network_config::HARDCODED_NET_NAMES)
+                            .default_value(eth2_network_config::DEFAULT_HARDCODED_NETWORK)
+                            .takes_value(true)
+                            .global(true)
+                )
+                .arg(
                     Arg::with_name("jwt-output-path")
                         .long("jwt-output-path")
                         .value_name("PATH")
@@ -828,6 +838,7 @@ fn run<T: EthSpec>(
             compression: false,
         })
         .map_err(|e| format!("should start logger: {:?}", e))?
+        .optional_eth2_network_config(Some(get_eth2_network_config(&matches)?))?
         .build()
         .map_err(|e| format!("should build env: {:?}", e))?;
 

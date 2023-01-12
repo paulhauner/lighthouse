@@ -18,7 +18,7 @@ pub fn run<T: EthSpec>(mut env: Environment<T>, matches: &ArgMatches) -> Result<
     let all_payloads_valid: bool = parse_required(matches, "all-payloads-valid")?;
 
     let handle = env.core_context().executor.handle().unwrap();
-    let spec = &T::default_spec();
+    let spec = env.eth2_network_config.unwrap().chain_spec()?;
     let jwt_key = JwtKey::from_slice(&DEFAULT_JWT_SECRET).unwrap();
     std::fs::write(&jwt_path, hex::encode(DEFAULT_JWT_SECRET)).unwrap();
 
