@@ -52,6 +52,16 @@ fn main() {
                 .global(true)
                 .help("The testnet dir. Defaults to ~/.lighthouse/testnet"),
         )
+        .arg(
+            Arg::with_name("network")
+                .long("network")
+                .value_name("network")
+                .help("Name of the Eth2 chain Lighthouse will sync and follow.")
+                .possible_values(eth2_network_config::HARDCODED_NET_NAMES)
+                .default_value(eth2_network_config::DEFAULT_HARDCODED_NETWORK)
+                .takes_value(true)
+                .global(true)
+        )
         .subcommand(
             SubCommand::with_name("skip-slots")
                 .about(
@@ -757,16 +767,6 @@ fn main() {
                 .about("Creates a mock execution layer server. This is NOT SAFE and should only \
                 be used for testing and development on testnets. Do not use in production. Do not \
                 use on mainnet.")
-                .arg(
-                        Arg::with_name("network")
-                            .long("network")
-                            .value_name("network")
-                            .help("Name of the Eth2 chain Lighthouse will sync and follow.")
-                            .possible_values(eth2_network_config::HARDCODED_NET_NAMES)
-                            .default_value(eth2_network_config::DEFAULT_HARDCODED_NETWORK)
-                            .takes_value(true)
-                            .global(true)
-                )
                 .arg(
                     Arg::with_name("jwt-output-path")
                         .long("jwt-output-path")
