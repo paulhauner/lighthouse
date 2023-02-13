@@ -85,10 +85,8 @@ pub struct ProtoNode {
     pub root: Hash256,
     #[ssz(with = "four_byte_option_usize")]
     pub parent: Option<usize>,
-    #[ssz(with = "four_byte_option_checkpoint")]
-    pub justified_checkpoint: Option<Checkpoint>,
-    #[ssz(with = "four_byte_option_checkpoint")]
-    pub finalized_checkpoint: Option<Checkpoint>,
+    pub justified_checkpoint: Checkpoint,
+    pub finalized_checkpoint: Checkpoint,
     pub weight: u64,
     #[ssz(with = "four_byte_option_usize")]
     pub best_child: Option<usize>,
@@ -320,8 +318,8 @@ impl ProtoArray {
             parent: block
                 .parent_root
                 .and_then(|parent| self.indices.get(&parent).copied()),
-            justified_checkpoint: Some(block.justified_checkpoint),
-            finalized_checkpoint: Some(block.finalized_checkpoint),
+            justified_checkpoint: block.justified_checkpoint,
+            finalized_checkpoint: block.finalized_checkpoint,
             weight: 0,
             best_child: None,
             best_descendant: None,
@@ -666,8 +664,8 @@ impl ProtoArray {
                 justified_checkpoint: self.justified_checkpoint,
                 finalized_checkpoint: self.finalized_checkpoint,
                 head_root: justified_node.root,
-                head_justified_checkpoint: justified_node.justified_checkpoint,
-                head_finalized_checkpoint: justified_node.finalized_checkpoint,
+                head_justified_checkpoint: Some(justified_node.justified_checkpoint),
+                head_finalized_checkpoint: Some(justified_node.finalized_checkpoint),
             })));
         }
 
@@ -883,25 +881,17 @@ impl ProtoArray {
         let genesis_epoch = Epoch::new(0);
         let current_epoch = current_slot.epoch(E::slots_per_epoch());
         let node_epoch = node.slot.epoch(E::slots_per_epoch());
-        let node_justified_checkpoint =
-            if let Some(justified_checkpoint) = node.justified_checkpoint {
-                justified_checkpoint
-            } else {
-                // The node does not have any information about the justified
-                // checkpoint. This indicates an inconsistent proto-array.
-                return false;
-            };
 
         let voting_source = if current_epoch > node_epoch {
             // The block is from a prior epoch, the voting source will be pulled-up.
             node.unrealized_justified_checkpoint
                 // Sometimes we don't track the unrealized justification. In
                 // that case, just use the fully-realized justified checkpoint.
-                .unwrap_or(node_justified_checkpoint)
+                .unwrap_or(node.justified_checkpoint)
         } else {
             // The block is not from a prior epoch, therefore the voting source
             // is not pulled up.
-            node_justified_checkpoint
+            node.justified_checkpoint
         };
 
         let mut correct_justified = self.justified_checkpoint.epoch == genesis_epoch
@@ -999,8 +989,8 @@ impl ProtoArray {
         // If the conditions don't match for this node then they're unlikely to
         // start matching for its ancestors.
         for checkpoint in &[
-            node.finalized_checkpoint,
-            node.justified_checkpoint,
+            Some(node.finalized_checkpoint),
+            Some(node.justified_checkpoint),
             node.unrealized_finalized_checkpoint,
             node.unrealized_justified_checkpoint,
         ] {
