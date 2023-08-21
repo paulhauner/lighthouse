@@ -196,7 +196,10 @@ impl BeaconNodeHttpClient {
     /// Perform a HTTP GET request.
     async fn get<T: DeserializeOwned, U: IntoUrl>(&self, url: U) -> Result<T, Error> {
         let response = self.get_response(url, |b| b).await?;
-        Ok(response.json().await?)
+        let text = response.text().await?;
+        dbg!(&text);
+        let obj = serde_json::from_str(&text).unwrap();
+        Ok(obj)
     }
 
     /// Perform an HTTP GET request, returning the `Response` for processing.
