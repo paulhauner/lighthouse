@@ -32,6 +32,13 @@ const HOLESKY_GENESIS_STATE_SOURCE: GenesisStateSource = GenesisStateSource::Url
     checksum: "0x76631cd0b9ddc5b2c766b496e23f16759ce1181446a4efb40e5540cd15b78a07",
 };
 
+const PRATER_GENESIS_STATE_SOURCE: GenesisStateSource = GenesisStateSource::Url {
+    // We do not provide any default servers. Users should use a checkpoint sync
+    // server.
+    urls: &[],
+    checksum: "0x23daa70a970034444da4dc04abfab7b7dd08adaadefb1f9764ac56ea58b2086e",
+};
+
 /// The core configuration of a Lighthouse beacon node.
 #[derive(Debug, Clone)]
 pub struct Eth2Config {
@@ -277,7 +284,7 @@ define_hardcoded_nets!(
         // directory where the configuration files are located for this network.
         "prater",
         // Describes how the genesis state can be obtained.
-        GenesisStateSource::IncludedBytes
+        PRATER_GENESIS_STATE_SOURCE
     ),
     (
         // Network name (must be unique among all networks).
@@ -288,7 +295,7 @@ define_hardcoded_nets!(
         // The Goerli network is effectively an alias to Prater.
         "prater",
         // Describes how the genesis state can be obtained.
-        GenesisStateSource::IncludedBytes
+        PRATER_GENESIS_STATE_SOURCE
     ),
     (
         // Network name (must be unique among all networks).
