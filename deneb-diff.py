@@ -13,6 +13,7 @@ IGNORE_LIST = [
     ".idea",
     "target",
 ]
+COMPONENTS_TO_SPLIT = ["./beacon_node", "./consensus"]
 
 
 def get_stats(dir, table):
@@ -21,7 +22,7 @@ def get_stats(dir, table):
         if os.path.isdir(path):
             if filename in IGNORE_LIST:
                 continue
-            elif path == os.path.join(dir, "beacon_node"):
+            elif path in COMPONENTS_TO_SPLIT:
                 get_stats(path, table)
             else:
                 row = [path]
