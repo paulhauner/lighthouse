@@ -24,17 +24,47 @@ def get_stats(dir, table):
             elif path == os.path.join(dir, "beacon_node"):
                 get_stats(path, table)
             else:
-                result = subprocess.run(
-                    ["git", "diff", "--shortstat", FEATURE_BRANCH, BASE_BRANCH, path],
-                    stdout=subprocess.PIPE,
-                )
-                formatted = result.stdout.decode("utf-8").strip("\n")
                 row = [path]
-                row += formatted.split(", ")
+
+                git_output = (
+                    subprocess.run(
+                        [
+                            "git",
+                            "diff",
+                            "--shortstat",
+                            FEATURE_BRANCH,
+                            BASE_BRANCH,
+                            path,
+                        ],
+                        stdout=subprocess.PIPE,
+                    )
+                    .stdout.decode("utf-8")
+                    .strip("\n")
+                    .replace(" file changed", "")
+                    .replace(" files changed", "")
+                    .replace(" insertion(+)", "")
+                    .replace(" insertions(+)", "")
+                    .replace(" deletion(-)", "")
+                    .replace(" deletions(-)", "")
+                    .split(", ")
+                )
+                if git_output == [""]:
+                    # There are no changes to this file.
+                    continue
+                while len(git_output) < 3:
+                    git_output.append("")
+
+                row += git_output
+                row += ["Awaiting Review"]
                 row += ["Unassigned"]
                 table.append(row)
     return table
 
 
 table = get_stats("./", [])
-print(tabulate(table, headers=["Component", "", "", "", "Reviewer"]))
+print(
+    tabulate(
+        table,
+        headers=["Component", "Files", "Lines +", "Lines -", "Status", "Reviewer(s)"],
+    )
+)
