@@ -66,6 +66,6 @@ table = get_stats("./", [])
 print(
     tabulate(
         table,
-        headers=["Component", "Files", "Lines +", "Lines -", "Status", "Reviewer(s)"],
+        headers=["Component", "Files", "Lines -", "Lines +", "Status", "Reviewer(s)"],
     )
 )
