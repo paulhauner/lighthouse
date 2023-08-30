@@ -13,7 +13,7 @@ IGNORE_LIST = [
     ".idea",
     "target",
 ]
-COMPONENTS_TO_SPLIT = ["./beacon_node", "./consensus"]
+COMPONENTS_TO_SPLIT = ["./beacon_node", "./consensus", "./common"]
 
 
 def get_stats(dir, table):
