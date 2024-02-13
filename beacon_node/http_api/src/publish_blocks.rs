@@ -321,6 +321,12 @@ pub async fn reconstruct_block<T: BeaconChainTypes>(
     block: Arc<SignedBlindedBeaconBlock<T::EthSpec>>,
     log: Logger,
 ) -> Result<ProvenancedBlock<T, PublishBlockRequest<T::EthSpec>>, Rejection> {
+    debug!(
+        log,
+        "Reconstructing blinded block";
+        "slot" => block.slot(),
+        "root" => ?block_root
+    );
     let full_payload_opt = if let Ok(payload_header) = block.message().body().execution_payload() {
         let el = chain.execution_layer.as_ref().ok_or_else(|| {
             warp_utils::reject::custom_server_error("Missing execution layer".to_string())
