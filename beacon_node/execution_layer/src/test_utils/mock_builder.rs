@@ -267,6 +267,10 @@ impl<E: EthSpec> MockBuilder<E> {
         }
     }
 
+    pub fn pubkey(&self) -> PublicKeyBytes {
+        self.builder_sk.public_key().compress()
+    }
+
     pub fn add_operation(&self, op: Operation) {
         // Insert operations at the front of the vec to make sure `apply_operations` applies them
         // in the order they are added.

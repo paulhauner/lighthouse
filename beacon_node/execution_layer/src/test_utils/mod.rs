@@ -31,7 +31,7 @@ pub use execution_block_generator::{
     static_valid_tx, Block, ExecutionBlockGenerator,
 };
 pub use hook::Hook;
-pub use mock_builder::{MockBuilder, Operation};
+pub use mock_builder::{serve as serve_mock_builder, MockBuilder, Operation};
 pub use mock_execution_layer::MockExecutionLayer;
 
 pub const DEFAULT_TERMINAL_DIFFICULTY: u64 = 6400;
