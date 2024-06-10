@@ -5,7 +5,6 @@ pub mod attestation_rewards;
 mod block_packing_efficiency;
 mod block_rewards;
 mod standard_block_rewards;
-mod sync_committee_rewards;
 
 use crate::{
     types::{
