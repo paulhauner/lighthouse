@@ -18,6 +18,39 @@ use std::sync::Arc;
 use std::time::Duration;
 use types::beacon_block_body::KzgCommitments;
 pub use types::*;
+use zeroize::Zeroize;
+
+/// Provides a new-type wrapper around `String` that is zeroized on `Drop`.
+///
+/// Useful for ensuring that password memory is zeroed-out on drop.
+#[derive(Clone, PartialEq, Serialize, Deserialize, Zeroize)]
+#[zeroize(drop)]
+#[serde(transparent)]
+pub struct ZeroizeString(String);
+
+impl From<String> for ZeroizeString {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl ZeroizeString {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Remove any number of newline or carriage returns from the end of a vector of bytes.
+    pub fn without_newlines(&self) -> ZeroizeString {
+        let stripped_string = self.0.trim_end_matches(|c| c == '\r' || c == '\n').into();
+        Self(stripped_string)
+    }
+}
+
+impl AsRef<[u8]> for ZeroizeString {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
 
 #[cfg(feature = "lighthouse")]
 use crate::lighthouse::BlockReward;

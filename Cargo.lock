@@ -2419,7 +2419,6 @@ dependencies = [
 name = "eth2"
 version = "0.1.0"
 dependencies = [
- "account_utils",
  "bytes",
  "eth2_keystore",
  "ethereum_serde_utils",
@@ -2444,6 +2443,7 @@ dependencies = [
  "store",
  "tokio",
  "types",
+ "zeroize",
 ]
 
 [[package]]

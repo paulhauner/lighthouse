@@ -1,4 +1,3 @@
-use account_utils::ZeroizeString;
 use eth2_keystore::Keystore;
 use graffiti::GraffitiString;
 use serde::{Deserialize, Serialize};
@@ -7,6 +6,7 @@ use std::path::PathBuf;
 pub use crate::lighthouse::Health;
 pub use crate::lighthouse_vc::std_types::*;
 pub use crate::types::{GenericResponse, VersionData};
+use crate::ZeroizeString;
 pub use types::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

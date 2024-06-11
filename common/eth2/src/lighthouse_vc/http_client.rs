@@ -1,6 +1,5 @@
 use super::{types::*, PK_LEN, SECRET_PREFIX};
-use crate::Error;
-use account_utils::ZeroizeString;
+use crate::{Error, ZeroizeString};
 use bytes::Bytes;
 use libsecp256k1::{Message, PublicKey, Signature};
 use reqwest::{
