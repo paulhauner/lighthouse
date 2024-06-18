@@ -78,15 +78,12 @@ pub struct ExecutionPayloadHeader<E: EthSpec> {
     #[superstruct(getter(copy))]
     pub transactions_root: Hash256,
     #[superstruct(only(Capella, Deneb, Electra))]
-    #[superstruct(getter(copy))]
     pub withdrawals_root: Hash256,
     #[superstruct(only(Deneb, Electra))]
     #[serde(with = "serde_utils::quoted_u64")]
-    #[superstruct(getter(copy))]
     pub blob_gas_used: u64,
     #[superstruct(only(Deneb, Electra))]
     #[serde(with = "serde_utils::quoted_u64")]
-    #[superstruct(getter(copy))]
     pub excess_blob_gas: u64,
     #[superstruct(only(Electra), partial_getter(copy))]
     pub deposit_receipts_root: Hash256,
