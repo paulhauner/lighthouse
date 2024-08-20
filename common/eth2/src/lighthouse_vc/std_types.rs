@@ -2,6 +2,7 @@ use eth2_keystore::Keystore;
 use serde::{Deserialize, Serialize};
 use types::{Address, Graffiti, PublicKeyBytes};
 
+#[cfg(feature = "slashing_protection")]
 pub use slashing_protection::interchange::Interchange;
 
 use crate::ZeroizeString;
@@ -42,6 +43,7 @@ pub struct SingleKeystoreResponse {
 pub struct ImportKeystoresRequest {
     pub keystores: Vec<KeystoreJsonStr>,
     pub passwords: Vec<ZeroizeString>,
+    #[cfg(feature = "slashing_protection")]
     pub slashing_protection: Option<InterchangeJsonStr>,
 }
 
@@ -58,6 +60,7 @@ impl std::ops::Deref for KeystoreJsonStr {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(transparent)]
+#[cfg(feature = "slashing_protection")]
 pub struct InterchangeJsonStr(#[serde(with = "serde_utils::json_str")] pub Interchange);
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -106,6 +109,7 @@ pub struct DeleteKeystoresRequest {
 pub struct DeleteKeystoresResponse {
     pub data: Vec<Status<DeleteKeystoreStatus>>,
     #[serde(with = "serde_utils::json_str")]
+    #[cfg(feature = "slashing_protection")]
     pub slashing_protection: Interchange,
 }
 

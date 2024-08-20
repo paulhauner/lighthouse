@@ -181,6 +181,7 @@ pub struct VoluntaryExitQuery {
 pub struct ExportKeystoresResponse {
     pub data: Vec<SingleExportKeystoresResponse>,
     #[serde(with = "serde_utils::json_str")]
+    #[cfg(feature = "slashing_protection")]
     pub slashing_protection: Interchange,
 }
 
