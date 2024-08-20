@@ -62,7 +62,7 @@ tokio = { workspace = true }
 paste = { workspace = true }
 
 [features]
-default = ["sqlite", "rusqlite", "legacy-arith"]
+default = ["legacy-arith"]
 # Allow saturating arithmetic on slots and epochs. Enabled by default, but deprecated.
 legacy-arith = []
 sqlite = ["rusqlite"]
