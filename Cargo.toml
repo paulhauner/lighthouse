@@ -230,7 +230,7 @@ state_processing = { path = "consensus/state_processing" }
 store = { path = "beacon_node/store" }
 swap_or_not_shuffle = { path = "consensus/swap_or_not_shuffle" }
 task_executor = { path = "common/task_executor" }
-types = { path = "consensus/types", default-features = false }
+types = { path = "consensus/types" }
 unused_port = { path = "common/unused_port" }
 validator_client = { path = "validator_client" }
 validator_dir = { path = "common/validator_dir" }

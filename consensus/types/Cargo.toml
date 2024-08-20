@@ -37,7 +37,7 @@ cached_tree_hash = { workspace = true }
 serde_yaml = { workspace = true }
 tempfile = { workspace = true }
 derivative = { workspace = true }
-rusqlite = { workspace = true, optional = true }
+rusqlite = { workspace = true }
 # The arbitrary dependency is enabled by default since Capella to avoid complexity introduced by
 # `AbstractExecPayload`
 arbitrary = { workspace = true, features = ["derive"] }
@@ -62,10 +62,10 @@ tokio = { workspace = true }
 paste = { workspace = true }
 
 [features]
-default = ["sqlite", "rusqlite", "legacy-arith"]
+default = ["sqlite", "legacy-arith"]
 # Allow saturating arithmetic on slots and epochs. Enabled by default, but deprecated.
 legacy-arith = []
-sqlite = ["rusqlite"]
+sqlite = []
 # The `arbitrary-fuzz` feature is a no-op provided for backwards compatibility.
 # For simplicity `Arbitrary` is now derived regardless of the feature's presence.
 arbitrary-fuzz = []
