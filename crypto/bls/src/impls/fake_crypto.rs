@@ -200,6 +200,10 @@ impl TSecretKey<Signature, PublicKey> for SecretKey {
         Signature::infinity()
     }
 
+    fn sign_arbitrary(&self, _msg: &[u8]) -> Signature {
+        Signature::infinity()
+    }
+
     fn serialize(&self) -> ZeroizeHash {
         let mut bytes = [0; SECRET_KEY_BYTES_LEN];
         bytes[..].copy_from_slice(&self.0[..]);

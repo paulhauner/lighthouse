@@ -17,6 +17,9 @@ pub trait TSecretKey<SignaturePoint, PublicKeyPoint>: Sized {
     /// Signs `msg`.
     fn sign(&self, msg: Hash256) -> SignaturePoint;
 
+    /// Signs arbitrary bytes.
+    fn sign_arbitrary(&self, msg: &[u8]) -> SignaturePoint;
+
     /// Returns the public key that corresponds to self.
     fn public_key(&self) -> PublicKeyPoint;
 
@@ -54,6 +57,12 @@ where
     pub fn sign(&self, msg: Hash256) -> GenericSignature<Pub, Sig> {
         let is_infinity = false;
         GenericSignature::from_point(self.point.sign(msg), is_infinity)
+    }
+
+    /// Signs arbitrary bytes.
+    pub fn sign_arbitrary(&self, msg: &[u8]) -> GenericSignature<Pub, Sig> {
+        let is_infinity = false;
+        GenericSignature::from_point(self.point.sign_arbitrary(msg), is_infinity)
     }
 
     /// Returns the public key that corresponds to self.

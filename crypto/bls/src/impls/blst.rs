@@ -271,6 +271,10 @@ impl TSecretKey<blst_core::Signature, blst_core::PublicKey> for blst_core::Secre
         self.sign(msg.as_bytes(), DST, &[])
     }
 
+    fn sign_arbitrary(&self, msg: &[u8]) -> blst_core::Signature {
+        self.sign(msg, DST, &[])
+    }
+
     fn serialize(&self) -> ZeroizeHash {
         self.to_bytes().into()
     }
