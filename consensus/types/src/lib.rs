@@ -248,6 +248,7 @@ pub use crate::sync_committee_subscription::SyncCommitteeSubscription;
 pub use crate::sync_duty::SyncDuty;
 pub use crate::sync_selection_proof::SyncSelectionProof;
 pub use crate::sync_subnet_id::SyncSubnetId;
+pub use crate::transactions_opaque::TransactionsOpaque;
 pub use crate::validator::Validator;
 pub use crate::validator_registration_data::*;
 pub use crate::validator_subscription::ValidatorSubscription;

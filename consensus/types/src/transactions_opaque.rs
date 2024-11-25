@@ -1,12 +1,45 @@
 use crate::EthSpec;
-use ssz::{read_offset, Decode, DecodeError, BYTES_PER_LENGTH_OFFSET};
+use ssz::{encode_length, read_offset, Decode, DecodeError, Encode, BYTES_PER_LENGTH_OFFSET};
 use std::marker::PhantomData;
 
-#[derive(Default)]
-struct TransactionsOpaque<E> {
+#[derive(Default, Debug, Clone)]
+pub struct TransactionsOpaque<E> {
     offsets: Vec<usize>,
     bytes: Vec<u8>,
     _phantom: PhantomData<E>,
+}
+
+impl<E> TransactionsOpaque<E> {
+    pub fn iter<'a>(&'a self) -> TransactionsOpaqueIter<'a> {
+        TransactionsOpaqueIter {
+            offsets: &self.offsets,
+            bytes: &self.bytes,
+        }
+    }
+
+    fn len_offset_bytes(&self) -> usize {
+        self.offsets.len().saturating_mul(BYTES_PER_LENGTH_OFFSET)
+    }
+}
+
+impl<E: EthSpec> Encode for TransactionsOpaque<E> {
+    fn is_ssz_fixed_len() -> bool {
+        false
+    }
+
+    fn ssz_append(&self, buf: &mut Vec<u8>) {
+        let len_offset_bytes = self.len_offset_bytes();
+        buf.reserve(self.ssz_bytes_len());
+        for offset in &self.offsets {
+            let offset = offset.saturating_add(len_offset_bytes);
+            buf.extend_from_slice(&encode_length(offset));
+        }
+        buf.extend_from_slice(&self.bytes);
+    }
+
+    fn ssz_bytes_len(&self) -> usize {
+        self.len_offset_bytes().saturating_add(self.bytes.len())
+    }
 }
 
 impl<E: EthSpec> Decode for TransactionsOpaque<E> {
@@ -90,6 +123,22 @@ impl<E: EthSpec> Decode for TransactionsOpaque<E> {
             bytes: value_bytes.to_vec(),
             _phantom: PhantomData,
         })
+    }
+}
+
+pub struct TransactionsOpaqueIter<'a> {
+    offsets: &'a [usize],
+    bytes: &'a [u8],
+}
+
+impl<'a> Iterator for TransactionsOpaqueIter<'a> {
+    type Item = &'a [u8];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (offset, offsets) = self.offsets.split_first()?;
+        let next_offset = offsets.first().copied().unwrap_or(self.bytes.len());
+        self.offsets = offsets;
+        self.bytes.get(*offset..next_offset)
     }
 }
 
