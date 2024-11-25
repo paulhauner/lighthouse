@@ -1215,7 +1215,7 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
                 debug!(
                     self.log,
                     "Reconstructed txn";
-                    "bytes" => format!("0x{}", hex::encode(&**txn)),
+                    "bytes" => format!("0x{}", hex::encode(txn)),
                 );
             }
 

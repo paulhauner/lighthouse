@@ -7,10 +7,7 @@ use test_random_derive::TestRandom;
 use tree_hash_derive::TreeHash;
 
 pub type Transaction<N> = VariableList<u8, N>;
-pub type Transactions<E> = VariableList<
-    Transaction<<E as EthSpec>::MaxBytesPerTransaction>,
-    <E as EthSpec>::MaxTransactionsPerPayload,
->;
+pub type Transactions<E> = TransactionsOpaque<E>;
 
 pub type Withdrawals<E> = VariableList<Withdrawal, <E as EthSpec>::MaxWithdrawalsPerPayload>;
 
@@ -80,7 +77,6 @@ pub struct ExecutionPayload<E: EthSpec> {
     pub base_fee_per_gas: Uint256,
     #[superstruct(getter(copy))]
     pub block_hash: ExecutionBlockHash,
-    #[serde(with = "ssz_types::serde_utils::list_of_hex_var_list")]
     pub transactions: Transactions<E>,
     #[superstruct(only(Capella, Deneb, Electra))]
     pub withdrawals: Withdrawals<E>,

@@ -1,6 +1,6 @@
 use alloy_consensus::TxEnvelope;
 use alloy_rlp::Decodable;
-use types::{EthSpec, ExecutionPayloadRef, Hash256, Unsigned, VersionedHash};
+use types::{EthSpec, ExecutionPayloadRef, Hash256, VersionedHash};
 
 #[derive(Debug)]
 pub enum Error {
@@ -59,10 +59,8 @@ pub fn extract_versioned_hashes_from_transactions<E: EthSpec>(
     Ok(versioned_hashes)
 }
 
-pub fn beacon_tx_to_tx_envelope<N: Unsigned>(
-    tx: &types::Transaction<N>,
-) -> Result<TxEnvelope, Error> {
-    let tx_bytes = Vec::from(tx.clone());
+pub fn beacon_tx_to_tx_envelope(tx: &[u8]) -> Result<TxEnvelope, Error> {
+    let tx_bytes = Vec::from(tx);
     TxEnvelope::decode(&mut tx_bytes.as_slice())
         .map_err(|e| Error::DecodingTransaction(e.to_string()))
 }

@@ -1,29 +1,72 @@
 use crate::test_utils::TestRandom;
 use crate::EthSpec;
 use arbitrary::Arbitrary;
+use derivative::Derivative;
 use rand::RngCore;
-use serde::{de, ser::Serializer, Deserialize, Deserializer, Serialize};
+use serde::{ser::Serializer, Deserialize, Deserializer, Serialize};
 use ssz::{encode_length, read_offset, Decode, DecodeError, Encode, BYTES_PER_LENGTH_OFFSET};
+use std::iter::IntoIterator;
 use std::marker::PhantomData;
 use tree_hash::TreeHash;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug)]
+pub enum Error {
+    TooManyTransactions,
+    TransactionTooBig,
+}
+
+#[derive(Debug, Clone, Derivative)]
+#[derivative(Default, PartialEq, Hash(bound = "E: EthSpec"))]
 pub struct TransactionsOpaque<E> {
     offsets: Vec<usize>,
     bytes: Vec<u8>,
     _phantom: PhantomData<E>,
 }
 
-impl<E> TransactionsOpaque<E> {
-    pub fn iter<'a>(&'a self) -> TransactionsOpaqueIter<'a> {
-        TransactionsOpaqueIter {
-            offsets: &self.offsets,
-            bytes: &self.bytes,
+impl<E: EthSpec> TransactionsOpaque<E> {
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    pub fn push(&mut self, item: &[u8]) -> Result<(), Error> {
+        let max_tx_count = <E as EthSpec>::max_transactions_per_payload();
+        let max_tx_bytes = <E as EthSpec>::max_bytes_per_transaction();
+
+        if item.len() > max_tx_bytes {
+            Err(Error::TransactionTooBig)
+        } else if self.offsets.len() >= max_tx_count {
+            Err(Error::TooManyTransactions)
+        } else {
+            self.offsets.push(self.bytes.len());
+            self.bytes.extend_from_slice(item);
+            Ok(())
         }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &[u8]> {
+        self.into_iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.offsets.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     fn len_offset_bytes(&self) -> usize {
         self.offsets.len().saturating_mul(BYTES_PER_LENGTH_OFFSET)
+    }
+}
+
+impl<E: EthSpec> From<Vec<Vec<u8>>> for TransactionsOpaque<E> {
+    fn from(vecs: Vec<Vec<u8>>) -> Self {
+        let mut txs = Self::default();
+        for vec in vecs {
+            txs.push(&vec).unwrap();
+        }
+        txs
     }
 }
 
@@ -131,6 +174,18 @@ impl<E: EthSpec> Decode for TransactionsOpaque<E> {
     }
 }
 
+impl<'a, E> IntoIterator for &'a TransactionsOpaque<E> {
+    type Item = &'a [u8];
+    type IntoIter = TransactionsOpaqueIter<'a>;
+
+    fn into_iter(self) -> TransactionsOpaqueIter<'a> {
+        TransactionsOpaqueIter {
+            offsets: &self.offsets,
+            bytes: &self.bytes,
+        }
+    }
+}
+
 pub struct TransactionsOpaqueIter<'a> {
     offsets: &'a [usize],
     bytes: &'a [u8],
@@ -149,13 +204,13 @@ impl<'a> Iterator for TransactionsOpaqueIter<'a> {
 
 /// Serialization for http requests.
 impl<E> Serialize for TransactionsOpaque<E> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
         todo!("impl serde serialize")
     }
 }
 
 impl<'de, E> Deserialize<'de> for TransactionsOpaque<E> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -182,7 +237,7 @@ impl<E> TreeHash for TransactionsOpaque<E> {
 }
 
 impl<E> TestRandom for TransactionsOpaque<E> {
-    fn random_for_test(rng: &mut impl RngCore) -> Self {
+    fn random_for_test(_rng: &mut impl RngCore) -> Self {
         todo!("impl test random")
     }
 }

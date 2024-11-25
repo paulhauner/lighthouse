@@ -662,7 +662,7 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
             let mut rng = self.rng.lock();
             let num_blobs = rng.gen::<usize>() % (E::max_blobs_per_block() + 1);
             let (bundle, transactions) = generate_blobs(num_blobs)?;
-            for tx in Vec::from(transactions) {
+            for tx in &transactions {
                 execution_payload
                     .transactions_mut()
                     .push(tx)
@@ -707,13 +707,15 @@ pub fn generate_blobs<E: EthSpec>(
     let (kzg_commitment, kzg_proof, blob) = load_test_blobs_bundle::<E>()?;
 
     let mut bundle = BlobsBundle::<E>::default();
-    let mut transactions = vec![];
+    let mut transactions = Transactions::default();
 
     for blob_index in 0..n_blobs {
         let tx = static_valid_tx::<E>()
             .map_err(|e| format!("error creating valid tx SSZ bytes: {:?}", e))?;
 
-        transactions.push(tx);
+        transactions
+            .push(&tx)
+            .map_err(|e| format!("invalid tx: {e:?}"))?;
         bundle
             .blobs
             .push(blob.clone())
@@ -728,7 +730,7 @@ pub fn generate_blobs<E: EthSpec>(
             .map_err(|_| format!("blobs are full, blob index: {:?}", blob_index))?;
     }
 
-    Ok((bundle, transactions.into()))
+    Ok((bundle, transactions))
 }
 
 pub fn static_valid_tx<E: EthSpec>() -> Result<Transaction<E::MaxBytesPerTransaction>, String> {
