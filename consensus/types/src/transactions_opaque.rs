@@ -95,10 +95,6 @@ impl<E: EthSpec> Decode for TransactionsOpaque<E> {
         false
     }
 
-    fn ssz_fixed_len() -> usize {
-        panic!("TransactionsOpaque is not fixed length");
-    }
-
     fn from_ssz_bytes(bytes: &[u8]) -> Result<Self, ssz::DecodeError> {
         if bytes.is_empty() {
             return Ok(Self::default());
