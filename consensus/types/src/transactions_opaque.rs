@@ -1,6 +1,11 @@
+use crate::test_utils::TestRandom;
 use crate::EthSpec;
+use arbitrary::Arbitrary;
+use rand::RngCore;
+use serde::{de, ser::Serializer, Deserialize, Deserializer, Serialize};
 use ssz::{encode_length, read_offset, Decode, DecodeError, Encode, BYTES_PER_LENGTH_OFFSET};
 use std::marker::PhantomData;
+use tree_hash::TreeHash;
 
 #[derive(Default, Debug, Clone)]
 pub struct TransactionsOpaque<E> {
@@ -139,6 +144,52 @@ impl<'a> Iterator for TransactionsOpaqueIter<'a> {
         let next_offset = offsets.first().copied().unwrap_or(self.bytes.len());
         self.offsets = offsets;
         self.bytes.get(*offset..next_offset)
+    }
+}
+
+/// Serialization for http requests.
+impl<E> Serialize for TransactionsOpaque<E> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        todo!("impl serde serialize")
+    }
+}
+
+impl<'de, E> Deserialize<'de> for TransactionsOpaque<E> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        todo!("impl serde deserialize")
+    }
+}
+
+impl<E> TreeHash for TransactionsOpaque<E> {
+    fn tree_hash_type() -> tree_hash::TreeHashType {
+        todo!("impl tree hash")
+    }
+
+    fn tree_hash_packed_encoding(&self) -> tree_hash::PackedEncoding {
+        todo!("impl tree hash")
+    }
+
+    fn tree_hash_packing_factor() -> usize {
+        todo!("impl tree hash")
+    }
+
+    fn tree_hash_root(&self) -> tree_hash::Hash256 {
+        todo!("impl tree hash")
+    }
+}
+
+impl<E> TestRandom for TransactionsOpaque<E> {
+    fn random_for_test(rng: &mut impl RngCore) -> Self {
+        todo!("impl test random")
+    }
+}
+
+impl<E> Arbitrary<'_> for TransactionsOpaque<E> {
+    fn arbitrary(_u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        todo!("impl arbitrary")
     }
 }
 
