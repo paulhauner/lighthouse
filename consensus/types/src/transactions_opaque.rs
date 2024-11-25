@@ -100,9 +100,10 @@ impl<E: EthSpec> Decode for TransactionsOpaque<E> {
             return Ok(Self::default());
         }
 
+        // - `offset_bytes`: first section of bytes with pointers to items.
+        // - `value_bytes`: the list items pointed to by `offset_bytes`.
         let (offset_bytes, value_bytes) = {
             let first_offset = read_offset(bytes)?;
-            sanitize_offset(first_offset, None, bytes.len(), Some(first_offset))?;
 
             if first_offset % BYTES_PER_LENGTH_OFFSET != 0 || first_offset < BYTES_PER_LENGTH_OFFSET
             {
@@ -241,27 +242,5 @@ impl<E> TestRandom for TransactionsOpaque<E> {
 impl<E> Arbitrary<'_> for TransactionsOpaque<E> {
     fn arbitrary(_u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
         todo!("impl arbitrary")
-    }
-}
-
-/// TODO: export from ssz crate.
-pub fn sanitize_offset(
-    offset: usize,
-    previous_offset: Option<usize>,
-    num_bytes: usize,
-    num_fixed_bytes: Option<usize>,
-) -> Result<usize, DecodeError> {
-    if num_fixed_bytes.map_or(false, |fixed_bytes| offset < fixed_bytes) {
-        Err(DecodeError::OffsetIntoFixedPortion(offset))
-    } else if previous_offset.is_none()
-        && num_fixed_bytes.map_or(false, |fixed_bytes| offset != fixed_bytes)
-    {
-        Err(DecodeError::OffsetSkipsVariableBytes(offset))
-    } else if offset > num_bytes {
-        Err(DecodeError::OffsetOutOfBounds(offset))
-    } else if previous_offset.map_or(false, |prev| prev > offset) {
-        Err(DecodeError::OffsetsAreDecreasing(offset))
-    } else {
-        Ok(offset)
     }
 }
