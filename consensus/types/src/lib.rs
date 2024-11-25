@@ -71,6 +71,7 @@ pub mod signed_voluntary_exit;
 pub mod signing_data;
 pub mod sync_committee_subscription;
 pub mod sync_duty;
+pub mod transactions_opaque;
 pub mod validator;
 pub mod validator_subscription;
 pub mod voluntary_exit;
