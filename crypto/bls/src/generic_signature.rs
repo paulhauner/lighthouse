@@ -120,7 +120,9 @@ where
         let point = if bytes == &NONE_SIGNATURE[..] {
             None
         } else {
-            Some(Sig::deserialize(bytes)?)
+            let mut raw = [0; 48];
+            raw.copy_from_slice(bytes);
+            None
         };
 
         Ok(Self {
