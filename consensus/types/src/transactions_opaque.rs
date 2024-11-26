@@ -7,7 +7,7 @@ use serde::{ser::Serializer, Deserialize, Deserializer, Serialize};
 use ssz::{encode_length, read_offset, Decode, DecodeError, Encode, BYTES_PER_LENGTH_OFFSET};
 use std::iter::IntoIterator;
 use std::marker::PhantomData;
-use tree_hash::TreeHash;
+use tree_hash::{mix_in_length, MerkleHasher, TreeHash};
 
 #[derive(Debug)]
 pub enum Error {
@@ -215,21 +215,44 @@ impl<'de, E> Deserialize<'de> for TransactionsOpaque<E> {
     }
 }
 
-impl<E> TreeHash for TransactionsOpaque<E> {
+impl<E: EthSpec> TreeHash for TransactionsOpaque<E> {
     fn tree_hash_type() -> tree_hash::TreeHashType {
-        todo!("impl tree hash")
+        tree_hash::TreeHashType::List
     }
 
     fn tree_hash_packed_encoding(&self) -> tree_hash::PackedEncoding {
-        todo!("impl tree hash")
+        panic!("transactions should never be packed")
     }
 
     fn tree_hash_packing_factor() -> usize {
-        todo!("impl tree hash")
+        panic!("transactions should never be packed")
     }
 
     fn tree_hash_root(&self) -> tree_hash::Hash256 {
-        todo!("impl tree hash")
+        let mut hasher = MerkleHasher::with_leaves(<E as EthSpec>::max_transactions_per_payload());
+
+        for tx in self.iter() {
+            // Produce a "leaf" hash of the transaction.
+            let leaf = {
+                let mut leaf_hasher =
+                    MerkleHasher::with_leaves(<E as EthSpec>::max_bytes_per_transaction());
+                leaf_hasher
+                    .write(tx)
+                    .expect("tx too large for hasher write, logic error");
+                leaf_hasher
+                    .finish()
+                    .expect("tx too large for hasher finish, logic error")
+            };
+            // Add the leaf hash to the main tree.
+            hasher
+                .write(leaf.as_slice())
+                .expect("cannot add leaf to transactions hash tree, logic error");
+        }
+
+        let root = hasher
+            .finish()
+            .expect("cannot finish transactions hash tree, logic error");
+        mix_in_length(&root, self.len())
     }
 }
 
