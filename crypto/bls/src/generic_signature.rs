@@ -120,7 +120,7 @@ where
         let point = if bytes == &NONE_SIGNATURE[..] {
             None
         } else {
-            let mut raw = [0; 48];
+            let mut raw = [0; 96];
             raw.copy_from_slice(bytes);
             None
         };
