@@ -163,7 +163,9 @@ where
         let point = if bytes == &EMPTY_SIGNATURE_SERIALIZATION[..] {
             None
         } else {
-            Some(AggSig::deserialize(bytes)?)
+            let mut raw = [0; 96];
+            raw.copy_from_slice(bytes);
+            None
         };
 
         Ok(Self {
