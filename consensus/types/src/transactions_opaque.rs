@@ -15,6 +15,13 @@ pub enum Error {
     TransactionTooBig,
 }
 
+/// The list of transactions in an execution payload.
+///
+/// This data-structure represents the transactions very closely to how they're
+/// encoded as SSZ. This makes for fast and low-allocation-count `ssz::Decode`.
+///
+/// The impact on iterating/accessing transactions in this data structure is
+/// minimal or negligible compared to a `Vec<Vec<>>`.
 #[derive(Debug, Clone, Derivative)]
 #[derivative(Default, PartialEq, Hash(bound = "E: EthSpec"))]
 pub struct TransactionsOpaque<E> {
@@ -24,10 +31,18 @@ pub struct TransactionsOpaque<E> {
 }
 
 impl<E: EthSpec> TransactionsOpaque<E> {
+    /// Creates an empty list.
     pub fn empty() -> Self {
         Self::default()
     }
 
+    /// Adds an `item` (i.e. transaction) to the list.
+    ///
+    /// ## Errors
+    ///
+    /// - If the `item` is longer than `EthSpec::max_bytes_per_transaction()`.
+    /// - If the operation would make this list longer than
+    /// `EthSpec::max_transactions_per_payload()`.
     pub fn push(&mut self, item: &[u8]) -> Result<(), Error> {
         let max_tx_count = <E as EthSpec>::max_transactions_per_payload();
         let max_tx_bytes = <E as EthSpec>::max_bytes_per_transaction();
@@ -43,27 +58,32 @@ impl<E: EthSpec> TransactionsOpaque<E> {
         }
     }
 
+    /// Iterates all transactions in `self`.
     pub fn iter(&self) -> impl Iterator<Item = &[u8]> {
         self.into_iter()
     }
 
+    /// The number of transactions in `self``.
     pub fn len(&self) -> usize {
         self.offsets.len()
     }
 
+    /// True if there are no transactions in `self`.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// The length of the offset/fixed-length section of the SSZ bytes, when
+    /// serialized.
     fn len_offset_bytes(&self) -> usize {
         self.offsets.len().saturating_mul(BYTES_PER_LENGTH_OFFSET)
     }
 }
 
 impl<E: EthSpec> From<Vec<Vec<u8>>> for TransactionsOpaque<E> {
-    fn from(vecs: Vec<Vec<u8>>) -> Self {
+    fn from(v: Vec<Vec<u8>>) -> Self {
         let mut txs = Self::default();
-        for vec in vecs {
+        for vec in v {
             txs.push(&vec).unwrap();
         }
         txs
