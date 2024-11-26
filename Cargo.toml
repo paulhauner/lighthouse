@@ -176,7 +176,7 @@ slog-term = "2"
 sloggers = { version = "2", features = ["json"] }
 smallvec = { version = "1.11.2", features = ["arbitrary"] }
 snap = "1"
-ssz_types = { rev = "bac5bdc5ed81029bf910b24da59e8696080e3ed8", git = "https://github.com/paulhauner/ssz_types.git" }
+ssz_types = { rev = "26716095d94e02a2cbd72c94a8b3b8549ecf14d1", git = "https://github.com/paulhauner/ssz_types.git" }
 strum = { version = "0.24", features = ["derive"] }
 superstruct = "0.8"
 syn = "1"
