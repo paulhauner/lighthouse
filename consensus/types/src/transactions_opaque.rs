@@ -420,12 +420,28 @@ mod tests {
     }
 
     #[test]
+    fn ssz_round_trip() {
+        for (test, transactions, reference) in TestVectors::default().iter() {
+            assert_eq!(
+                transactions.as_ssz_bytes(),
+                reference.as_ssz_bytes(),
+                "{test} - serialization"
+            );
+            assert_eq!(
+                transactions,
+                TransactionsOpaque::from_ssz_bytes(&reference.as_ssz_bytes()).unwrap(),
+                "{test} - deserialization"
+            )
+        }
+    }
+
+    #[test]
     fn tree_hash() {
         for (test, transactions, reference) in TestVectors::default().iter() {
             assert_eq!(
                 transactions.tree_hash_root(),
                 reference.tree_hash_root(),
-                "{test}: root != reference"
+                "{test}"
             )
         }
     }
