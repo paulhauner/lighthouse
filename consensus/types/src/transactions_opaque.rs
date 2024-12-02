@@ -1,5 +1,5 @@
-use crate::test_utils::TestRandom;
 use crate::EthSpec;
+use crate::{test_utils::TestRandom, MainnetEthSpec};
 use arbitrary::Arbitrary;
 use derivative::Derivative;
 use rand::RngCore;
@@ -11,7 +11,9 @@ use tree_hash::{mix_in_length, MerkleHasher, TreeHash};
 
 #[derive(Debug)]
 pub enum Error {
+    /// Exceeds `EthSpec::max_transactions_per_payload()`
     TooManyTransactions,
+    /// Exceeds `EthSpec::max_bytes_per_transaction()`
     TransactionTooBig,
 }
 
@@ -249,19 +251,25 @@ impl<E: EthSpec> TreeHash for TransactionsOpaque<E> {
     }
 
     fn tree_hash_root(&self) -> tree_hash::Hash256 {
-        let mut hasher = MerkleHasher::with_leaves(<E as EthSpec>::max_transactions_per_payload());
+        let max_tx_count = <E as EthSpec>::max_transactions_per_payload();
+        let max_tx_len = <E as EthSpec>::max_bytes_per_transaction();
+        let bytes_per_leaf = 32;
+        let tx_leaf_count = (max_tx_len + bytes_per_leaf - 1) / bytes_per_leaf;
+
+        let mut hasher = MerkleHasher::with_leaves(max_tx_count);
 
         for tx in self.iter() {
-            // Produce a "leaf" hash of the transaction.
+            // Produce a "leaf" hash of the transaction. This is the merkle root
+            // of the transaction.
             let leaf = {
-                let mut leaf_hasher =
-                    MerkleHasher::with_leaves(<E as EthSpec>::max_bytes_per_transaction());
+                let mut leaf_hasher = MerkleHasher::with_leaves(tx_leaf_count);
                 leaf_hasher
                     .write(tx)
                     .expect("tx too large for hasher write, logic error");
-                leaf_hasher
+                let leaf = leaf_hasher
                     .finish()
-                    .expect("tx too large for hasher finish, logic error")
+                    .expect("tx too large for hasher finish, logic error");
+                mix_in_length(&leaf, tx.len())
             };
             // Add the leaf hash to the main tree.
             hasher
@@ -285,5 +293,140 @@ impl<E> TestRandom for TransactionsOpaque<E> {
 impl<E> Arbitrary<'_> for TransactionsOpaque<E> {
     fn arbitrary(_u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
         todo!("impl arbitrary")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::VariableList;
+
+    type E = MainnetEthSpec;
+    pub type ReferenceTransaction<N> = VariableList<u8, N>;
+    pub type ReferenceTransactions = VariableList<
+        ReferenceTransaction<<E as EthSpec>::MaxBytesPerTransaction>,
+        <E as EthSpec>::MaxTransactionsPerPayload,
+    >;
+
+    struct TestVector {
+        name: &'static str,
+        vector: Vec<Vec<u8>>,
+    }
+
+    struct TestVectors {
+        vectors: Vec<TestVector>,
+    }
+
+    impl Default for TestVectors {
+        fn default() -> Self {
+            let vectors = vec![
+                TestVector {
+                    name: "empty",
+                    vector: vec![],
+                },
+                TestVector {
+                    name: "single_item_single_element",
+                    vector: vec![vec![0]],
+                },
+                TestVector {
+                    name: "two_items_single_element",
+                    vector: vec![vec![0], vec![1]],
+                },
+                TestVector {
+                    name: "three_items_single_element",
+                    vector: vec![vec![0], vec![1], vec![1]],
+                },
+                TestVector {
+                    name: "single_item_multiple_element",
+                    vector: vec![vec![0, 1, 2]],
+                },
+                TestVector {
+                    name: "two_items_multiple_element",
+                    vector: vec![vec![0, 1, 2], vec![3, 4, 5]],
+                },
+                TestVector {
+                    name: "three_items_multiple_element",
+                    vector: vec![vec![0, 1, 2], vec![3, 4], vec![5, 6, 7, 8]],
+                },
+                TestVector {
+                    name: "empty_list_at_start",
+                    vector: vec![vec![], vec![3, 4], vec![5, 6, 7, 8]],
+                },
+                TestVector {
+                    name: "empty_list_at_middle",
+                    vector: vec![vec![0, 1, 2], vec![], vec![5, 6, 7, 8]],
+                },
+                TestVector {
+                    name: "empty_list_at_end",
+                    vector: vec![vec![0, 1, 2], vec![3, 4, 5], vec![]],
+                },
+                TestVector {
+                    name: "two_empty_lists",
+                    vector: vec![vec![], vec![]],
+                },
+                TestVector {
+                    name: "three_empty_lists",
+                    vector: vec![vec![], vec![], vec![]],
+                },
+            ];
+
+            Self { vectors }
+        }
+    }
+
+    impl TestVectors {
+        fn iter(
+            &self,
+        ) -> impl Iterator<
+            Item = (
+                &'static str,
+                TransactionsOpaque<MainnetEthSpec>,
+                ReferenceTransactions,
+            ),
+        > + '_ {
+            self.vectors.iter().map(|vector| {
+                let name = vector.name;
+                let transactions = TransactionsOpaque::from(vector.vector.clone());
+
+                // Build a equivalent object using
+                // `VariableList<VariableList<u8>>`. We can use this for
+                // reference testing
+                let mut reference = ReferenceTransactions::default();
+                for tx in &vector.vector {
+                    reference.push(tx.clone().into()).unwrap();
+                }
+
+                // Perform basic sanity checking against the reference.
+                assert_eq!(transactions.len(), reference.len());
+                let mut transactions_iter = transactions.iter();
+                let mut reference_iter = reference.iter();
+                for _ in 0..transactions.len() {
+                    assert_eq!(
+                        transactions_iter.next().expect("not enough transactions"),
+                        reference_iter
+                            .next()
+                            .expect("not enough reference txs")
+                            .as_ref(),
+                        "transaction not equal"
+                    );
+                }
+                assert!(transactions_iter.next().is_none(), "excess transactions");
+                assert!(reference_iter.next().is_none(), "excess reference txs");
+                drop((transactions_iter, reference_iter));
+
+                (name, transactions, reference)
+            })
+        }
+    }
+
+    #[test]
+    fn tree_hash() {
+        for (test, transactions, reference) in TestVectors::default().iter() {
+            assert_eq!(
+                transactions.tree_hash_root(),
+                reference.tree_hash_root(),
+                "{test}: root != reference"
+            )
+        }
     }
 }
