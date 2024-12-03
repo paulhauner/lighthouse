@@ -1,5 +1,5 @@
+use crate::test_utils::TestRandom;
 use crate::EthSpec;
-use crate::{test_utils::TestRandom, MainnetEthSpec};
 use arbitrary::Arbitrary;
 use derivative::Derivative;
 use rand::RngCore;
@@ -159,11 +159,20 @@ impl<E: EthSpec> Decode for TransactionsOpaque<E> {
                 .checked_sub(offset_bytes.len())
                 .ok_or(DecodeError::OffsetIntoFixedPortion(offset))?;
 
-            let next_offset = offset_iter
-                .peek()
-                .copied()
-                .map(read_offset)
-                .unwrap_or(Ok(value_bytes.len()))?;
+            // Disallow an offset that points outside of the value bytes.
+            if offset > value_bytes.len() {
+                return Err(DecodeError::OffsetOutOfBounds(offset));
+            }
+
+            // Read the next offset (if any) to determine the length of this
+            // transaction.
+            let next_offset = if let Some(next_offset) = offset_iter.peek() {
+                read_offset(next_offset)?
+                    .checked_sub(offset_bytes.len())
+                    .ok_or(DecodeError::OffsetIntoFixedPortion(offset))?
+            } else {
+                value_bytes.len()
+            };
 
             // Disallow any offset that is lower than the previous.
             let tx_len = next_offset
@@ -175,11 +184,6 @@ impl<E: EthSpec> Decode for TransactionsOpaque<E> {
                 return Err(DecodeError::BytesInvalid(format!(
                     "length of {tx_len} exceeds maximum tx length of {max_tx_bytes}",
                 )));
-            }
-
-            // Disallow an offset that points outside of the value bytes.
-            if offset > value_bytes.len() {
-                return Err(DecodeError::OffsetOutOfBounds(offset));
             }
 
             offsets.push(offset);
@@ -299,7 +303,7 @@ impl<E> Arbitrary<'_> for TransactionsOpaque<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::VariableList;
+    use crate::{ssz_tagged_signed_beacon_block::encode, MainnetEthSpec, VariableList};
 
     type E = MainnetEthSpec;
     pub type ReferenceTransaction<N> = VariableList<u8, N>;
@@ -433,6 +437,97 @@ mod tests {
                 "{test} - deserialization"
             )
         }
+    }
+
+    fn err_from_bytes(bytes: &[u8]) -> DecodeError {
+        TransactionsOpaque::<E>::from_ssz_bytes(bytes).unwrap_err()
+    }
+
+    /// Helper to build invalid SSZ bytes.
+    #[derive(Default)]
+    struct InvalidSszBuilder {
+        ssz: Vec<u8>,
+    }
+
+    impl InvalidSszBuilder {
+        // Append a 4-byte offset to self.
+        pub fn append_offset(mut self, index: usize) -> Self {
+            self.ssz.extend_from_slice(&encode_length(index));
+            self
+        }
+
+        // Append some misc bytes to self.
+        pub fn append_value(mut self, value: &[u8]) -> Self {
+            self.ssz.extend_from_slice(value);
+            self
+        }
+
+        pub fn ssz(&self) -> &[u8] {
+            &self.ssz
+        }
+    }
+
+    #[test]
+    fn ssz_malicious() {
+        // Highest offset that's still a divisor of 4.
+        let max_offset = u32::MAX as usize - 3;
+
+        assert_eq!(
+            err_from_bytes(&[0]),
+            DecodeError::InvalidLengthPrefix {
+                len: 1,
+                expected: 4
+            }
+        );
+        assert_eq!(
+            err_from_bytes(
+                InvalidSszBuilder::default()
+                    // This offset points to itself. Illegal.
+                    .append_offset(0)
+                    .ssz()
+            ),
+            DecodeError::InvalidListFixedBytesLen(0)
+        );
+        assert_eq!(
+            err_from_bytes(
+                InvalidSszBuilder::default()
+                    .append_offset(8)
+                    // This offset points back to the first offset. Illegal.
+                    .append_offset(0)
+                    .ssz()
+            ),
+            DecodeError::OffsetIntoFixedPortion(0)
+        );
+        assert_eq!(
+            err_from_bytes(
+                InvalidSszBuilder::default()
+                    // This offset is far bigger than the SSZ buffer. Illegal.
+                    .append_offset(max_offset)
+                    .ssz()
+            ),
+            DecodeError::OffsetOutOfBounds(max_offset)
+        );
+        assert!(matches!(
+            err_from_bytes(
+                InvalidSszBuilder::default()
+                    .append_offset(8)
+                    // This infers a really huge transaction. Illegal.
+                    .append_offset(max_offset)
+                    .append_value(&[0])
+                    .ssz()
+            ),
+            DecodeError::BytesInvalid(_)
+        ));
+        assert_eq!(
+            err_from_bytes(
+                InvalidSszBuilder::default()
+                    .append_offset(8)
+                    // This points outside of the given bytes. Illegal.
+                    .append_offset(9)
+                    .ssz()
+            ),
+            DecodeError::OffsetOutOfBounds(1)
+        );
     }
 
     #[test]
