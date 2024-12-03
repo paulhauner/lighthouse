@@ -9,6 +9,11 @@ use std::iter::IntoIterator;
 use std::marker::PhantomData;
 use tree_hash::{mix_in_length, MerkleHasher, TreeHash};
 
+/// Max number of transactions in a `TestRandom` instance.
+const TEST_RANDOM_MAX_TX_COUNT: usize = 128;
+/// Max length of a transaction in a `TestRandom` instance.
+const TEST_RANDOM_MAX_TX_BYTES: usize = 1_024;
+
 #[derive(Debug)]
 pub enum Error {
     /// Exceeds `EthSpec::max_transactions_per_payload()`
@@ -288,9 +293,17 @@ impl<E: EthSpec> TreeHash for TransactionsOpaque<E> {
     }
 }
 
-impl<E> TestRandom for TransactionsOpaque<E> {
-    fn random_for_test(_rng: &mut impl RngCore) -> Self {
-        todo!("impl test random")
+impl<E: EthSpec> TestRandom for TransactionsOpaque<E> {
+    fn random_for_test(rng: &mut impl RngCore) -> Self {
+        let mut txs = Self::default();
+        let num_txs = rng.next_u32() as usize % TEST_RANDOM_MAX_TX_COUNT;
+        for _ in 0..num_txs {
+            let tx_len = rng.next_u32() as usize % TEST_RANDOM_MAX_TX_BYTES;
+            let mut tx = vec![0; tx_len];
+            rng.fill_bytes(&mut tx[..]);
+            txs.push(&tx).unwrap();
+        }
+        txs
     }
 }
 
@@ -303,7 +316,10 @@ impl<E> Arbitrary<'_> for TransactionsOpaque<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ssz_tagged_signed_beacon_block::encode, MainnetEthSpec, VariableList};
+    use crate::{
+        test_utils::{SeedableRng, XorShiftRng},
+        MainnetEthSpec, VariableList,
+    };
 
     type E = MainnetEthSpec;
     pub type ReferenceTransaction<N> = VariableList<u8, N>;
@@ -312,8 +328,10 @@ mod tests {
         <E as EthSpec>::MaxTransactionsPerPayload,
     >;
 
+    const NUM_RANDOM_VECTORS: usize = 256;
+
     struct TestVector {
-        name: &'static str,
+        name: String,
         vector: Vec<Vec<u8>>,
     }
 
@@ -323,56 +341,65 @@ mod tests {
 
     impl Default for TestVectors {
         fn default() -> Self {
-            let vectors = vec![
+            let mut vectors = vec![
                 TestVector {
-                    name: "empty",
+                    name: "empty".into(),
                     vector: vec![],
                 },
                 TestVector {
-                    name: "single_item_single_element",
+                    name: "single_item_single_element".into(),
                     vector: vec![vec![0]],
                 },
                 TestVector {
-                    name: "two_items_single_element",
+                    name: "two_items_single_element".into(),
                     vector: vec![vec![0], vec![1]],
                 },
                 TestVector {
-                    name: "three_items_single_element",
+                    name: "three_items_single_element".into(),
                     vector: vec![vec![0], vec![1], vec![1]],
                 },
                 TestVector {
-                    name: "single_item_multiple_element",
+                    name: "single_item_multiple_element".into(),
                     vector: vec![vec![0, 1, 2]],
                 },
                 TestVector {
-                    name: "two_items_multiple_element",
+                    name: "two_items_multiple_element".into(),
                     vector: vec![vec![0, 1, 2], vec![3, 4, 5]],
                 },
                 TestVector {
-                    name: "three_items_multiple_element",
+                    name: "three_items_multiple_element".into(),
                     vector: vec![vec![0, 1, 2], vec![3, 4], vec![5, 6, 7, 8]],
                 },
                 TestVector {
-                    name: "empty_list_at_start",
+                    name: "empty_list_at_start".into(),
                     vector: vec![vec![], vec![3, 4], vec![5, 6, 7, 8]],
                 },
                 TestVector {
-                    name: "empty_list_at_middle",
+                    name: "empty_list_at_middle".into(),
                     vector: vec![vec![0, 1, 2], vec![], vec![5, 6, 7, 8]],
                 },
                 TestVector {
-                    name: "empty_list_at_end",
+                    name: "empty_list_at_end".into(),
                     vector: vec![vec![0, 1, 2], vec![3, 4, 5], vec![]],
                 },
                 TestVector {
-                    name: "two_empty_lists",
+                    name: "two_empty_lists".into(),
                     vector: vec![vec![], vec![]],
                 },
                 TestVector {
-                    name: "three_empty_lists",
+                    name: "three_empty_lists".into(),
                     vector: vec![vec![], vec![], vec![]],
                 },
             ];
+
+            let mut rng = XorShiftRng::from_seed([42; 16]);
+            for i in 0..NUM_RANDOM_VECTORS {
+                let vector = TransactionsOpaque::<E>::random_for_test(&mut rng);
+                vectors.push(TestVector {
+                    name: format!("random_vector_{i}"),
+                    vector: vector.iter().map(|slice| slice.to_vec()).collect(),
+                })
+            }
 
             Self { vectors }
         }
@@ -383,13 +410,13 @@ mod tests {
             &self,
         ) -> impl Iterator<
             Item = (
-                &'static str,
+                String,
                 TransactionsOpaque<MainnetEthSpec>,
                 ReferenceTransactions,
             ),
         > + '_ {
             self.vectors.iter().map(|vector| {
-                let name = vector.name;
+                let name = vector.name.clone();
                 let transactions = TransactionsOpaque::from(vector.vector.clone());
 
                 // Build a equivalent object using
