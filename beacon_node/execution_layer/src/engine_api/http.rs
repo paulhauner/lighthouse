@@ -1472,14 +1472,11 @@ mod test {
 
     /// Example: if `spec == &[1, 1]`, then two one-byte transactions will be created.
     fn generate_transactions<E: EthSpec>(spec: &[usize]) -> Transactions<E> {
-        let mut txs = VariableList::default();
+        let mut txs = Transactions::default();
 
         for &num_bytes in spec {
-            let mut tx = VariableList::default();
-            for _ in 0..num_bytes {
-                tx.push(0).unwrap();
-            }
-            txs.push(tx).unwrap();
+            let tx = vec![0; num_bytes];
+            txs.push(&tx).unwrap();
         }
 
         txs

@@ -71,7 +71,7 @@ pub mod signed_voluntary_exit;
 pub mod signing_data;
 pub mod sync_committee_subscription;
 pub mod sync_duty;
-pub mod transactions_opaque;
+pub mod transactions;
 pub mod validator;
 pub mod validator_subscription;
 pub mod voluntary_exit;
@@ -164,7 +164,7 @@ pub use crate::execution_block_hash::ExecutionBlockHash;
 pub use crate::execution_block_header::{EncodableExecutionBlockHeader, ExecutionBlockHeader};
 pub use crate::execution_payload::{
     ExecutionPayload, ExecutionPayloadBellatrix, ExecutionPayloadCapella, ExecutionPayloadDeneb,
-    ExecutionPayloadElectra, ExecutionPayloadRef, Transaction, Transactions, Withdrawals,
+    ExecutionPayloadElectra, ExecutionPayloadRef, Withdrawals,
 };
 pub use crate::execution_payload_header::{
     ExecutionPayloadHeader, ExecutionPayloadHeaderBellatrix, ExecutionPayloadHeaderCapella,
@@ -248,7 +248,7 @@ pub use crate::sync_committee_subscription::SyncCommitteeSubscription;
 pub use crate::sync_duty::SyncDuty;
 pub use crate::sync_selection_proof::SyncSelectionProof;
 pub use crate::sync_subnet_id::SyncSubnetId;
-pub use crate::transactions_opaque::TransactionsOpaque;
+pub use crate::transactions::Transactions;
 pub use crate::validator::Validator;
 pub use crate::validator_registration_data::*;
 pub use crate::validator_subscription::ValidatorSubscription;

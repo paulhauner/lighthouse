@@ -32,7 +32,7 @@ pub enum Error {
 /// encoded as SSZ. This makes for fast and low-allocation-count `ssz::Decode`.
 #[derive(Debug, Clone, Derivative)]
 #[derivative(Default, PartialEq, Hash(bound = "E: EthSpec"))]
-pub struct TransactionsOpaque<E> {
+pub struct Transactions<E> {
     /// Points to the first byte of each transaction in `bytes`.
     offsets: Vec<usize>,
     /// All transactions, concatenated together.
@@ -41,7 +41,7 @@ pub struct TransactionsOpaque<E> {
     _phantom: PhantomData<E>,
 }
 
-impl<E> TransactionsOpaque<E> {
+impl<E> Transactions<E> {
     /// Creates an empty list.
     pub fn empty() -> Self {
         Self::default()
@@ -69,7 +69,7 @@ impl<E> TransactionsOpaque<E> {
     }
 }
 
-impl<E: EthSpec> TransactionsOpaque<E> {
+impl<E: EthSpec> Transactions<E> {
     /// Adds an `item` (i.e. transaction) to the list.
     ///
     /// ## Errors
@@ -93,7 +93,7 @@ impl<E: EthSpec> TransactionsOpaque<E> {
     }
 }
 
-impl<E: EthSpec> From<Vec<Vec<u8>>> for TransactionsOpaque<E> {
+impl<E: EthSpec> From<Vec<Vec<u8>>> for Transactions<E> {
     fn from(v: Vec<Vec<u8>>) -> Self {
         let mut txs = Self::default();
         for vec in v {
@@ -103,7 +103,7 @@ impl<E: EthSpec> From<Vec<Vec<u8>>> for TransactionsOpaque<E> {
     }
 }
 
-impl<E: EthSpec> Encode for TransactionsOpaque<E> {
+impl<E: EthSpec> Encode for Transactions<E> {
     fn is_ssz_fixed_len() -> bool {
         false
     }
@@ -123,7 +123,7 @@ impl<E: EthSpec> Encode for TransactionsOpaque<E> {
     }
 }
 
-impl<E: EthSpec> Decode for TransactionsOpaque<E> {
+impl<E: EthSpec> Decode for Transactions<E> {
     fn is_ssz_fixed_len() -> bool {
         false
     }
@@ -208,24 +208,24 @@ impl<E: EthSpec> Decode for TransactionsOpaque<E> {
     }
 }
 
-impl<'a, E> IntoIterator for &'a TransactionsOpaque<E> {
+impl<'a, E> IntoIterator for &'a Transactions<E> {
     type Item = &'a [u8];
-    type IntoIter = TransactionsOpaqueIter<'a>;
+    type IntoIter = TransactionsIter<'a>;
 
-    fn into_iter(self) -> TransactionsOpaqueIter<'a> {
-        TransactionsOpaqueIter {
+    fn into_iter(self) -> TransactionsIter<'a> {
+        TransactionsIter {
             offsets: &self.offsets,
             bytes: &self.bytes,
         }
     }
 }
 
-pub struct TransactionsOpaqueIter<'a> {
+pub struct TransactionsIter<'a> {
     offsets: &'a [usize],
     bytes: &'a [u8],
 }
 
-impl<'a> Iterator for TransactionsOpaqueIter<'a> {
+impl<'a> Iterator for TransactionsIter<'a> {
     type Item = &'a [u8];
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -245,7 +245,7 @@ impl<'a, E> serde::de::Visitor<'a> for Visitor<E>
 where
     E: EthSpec,
 {
-    type Value = TransactionsOpaque<E>;
+    type Value = Transactions<E>;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(formatter, "a list of 0x-prefixed hex bytes")
@@ -255,7 +255,7 @@ where
     where
         A: serde::de::SeqAccess<'a>,
     {
-        let mut txs: TransactionsOpaque<E> = <_>::default();
+        let mut txs: Transactions<E> = <_>::default();
 
         while let Some(hex_str) = seq.next_element::<&str>()? {
             let bytes = hex::decode(hex_str).map_err(serde::de::Error::custom)?;
@@ -268,17 +268,17 @@ where
     }
 }
 
-impl<E> Serialize for TransactionsOpaque<E> {
+impl<E> Serialize for Transactions<E> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut seq = serializer.serialize_seq(Some(self.len()))?;
         for bytes in self {
-            seq.serialize_element(&hex::encode(&bytes))?;
+            seq.serialize_element(&hex::encode(bytes))?;
         }
         seq.end()
     }
 }
 
-impl<'de, E: EthSpec> Deserialize<'de> for TransactionsOpaque<E> {
+impl<'de, E: EthSpec> Deserialize<'de> for Transactions<E> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -287,7 +287,7 @@ impl<'de, E: EthSpec> Deserialize<'de> for TransactionsOpaque<E> {
     }
 }
 
-impl<E: EthSpec> TreeHash for TransactionsOpaque<E> {
+impl<E: EthSpec> TreeHash for Transactions<E> {
     fn tree_hash_type() -> tree_hash::TreeHashType {
         tree_hash::TreeHashType::List
     }
@@ -300,6 +300,7 @@ impl<E: EthSpec> TreeHash for TransactionsOpaque<E> {
         panic!("transactions should never be packed")
     }
 
+    #[allow(clippy::arithmetic_side_effects)]
     fn tree_hash_root(&self) -> tree_hash::Hash256 {
         let max_tx_count = <E as EthSpec>::max_transactions_per_payload();
         let max_tx_len = <E as EthSpec>::max_bytes_per_transaction();
@@ -334,7 +335,7 @@ impl<E: EthSpec> TreeHash for TransactionsOpaque<E> {
     }
 }
 
-impl<E: EthSpec> TestRandom for TransactionsOpaque<E> {
+impl<E: EthSpec> TestRandom for Transactions<E> {
     fn random_for_test(rng: &mut impl RngCore) -> Self {
         let mut txs = Self::default();
         let num_txs = rng.next_u32() as usize % TEST_RANDOM_MAX_TX_COUNT;
@@ -348,7 +349,7 @@ impl<E: EthSpec> TestRandom for TransactionsOpaque<E> {
     }
 }
 
-impl<E: EthSpec> Arbitrary<'_> for TransactionsOpaque<E> {
+impl<E: EthSpec> Arbitrary<'_> for Transactions<E> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
         let mut txs = Self::default();
         let num_txs = usize::arbitrary(u).unwrap() % TEST_RANDOM_MAX_TX_COUNT;
@@ -443,7 +444,7 @@ mod tests {
 
             let mut rng = XorShiftRng::from_seed([42; 16]);
             for i in 0..NUM_RANDOM_VECTORS {
-                let vector = TransactionsOpaque::<E>::random_for_test(&mut rng);
+                let vector = Transactions::<E>::random_for_test(&mut rng);
                 vectors.push(TestVector {
                     name: format!("random_vector_{i}"),
                     vector: vector.iter().map(|slice| slice.to_vec()).collect(),
@@ -457,16 +458,11 @@ mod tests {
     impl TestVectors {
         fn iter(
             &self,
-        ) -> impl Iterator<
-            Item = (
-                String,
-                TransactionsOpaque<MainnetEthSpec>,
-                ReferenceTransactions,
-            ),
-        > + '_ {
+        ) -> impl Iterator<Item = (String, Transactions<MainnetEthSpec>, ReferenceTransactions)> + '_
+        {
             self.vectors.iter().map(|vector| {
                 let name = vector.name.clone();
-                let transactions = TransactionsOpaque::from(vector.vector.clone());
+                let transactions = Transactions::from(vector.vector.clone());
 
                 // Build a equivalent object using
                 // `VariableList<VariableList<u8>>`. We can use this for
@@ -509,14 +505,14 @@ mod tests {
             );
             assert_eq!(
                 transactions,
-                TransactionsOpaque::from_ssz_bytes(&reference.as_ssz_bytes()).unwrap(),
+                Transactions::from_ssz_bytes(&reference.as_ssz_bytes()).unwrap(),
                 "{test} - deserialization"
             )
         }
     }
 
     fn err_from_bytes(bytes: &[u8]) -> DecodeError {
-        TransactionsOpaque::<E>::from_ssz_bytes(bytes).unwrap_err()
+        Transactions::<E>::from_ssz_bytes(bytes).unwrap_err()
     }
 
     /// Helper to build invalid SSZ bytes.
