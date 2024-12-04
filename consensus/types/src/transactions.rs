@@ -305,7 +305,7 @@ impl<E: EthSpec> TreeHash for Transactions<E> {
         let max_tx_count = <E as EthSpec>::max_transactions_per_payload();
         let max_tx_len = <E as EthSpec>::max_bytes_per_transaction();
         let bytes_per_leaf = 32;
-        let tx_leaf_count = (max_tx_len + bytes_per_leaf - 1) / bytes_per_leaf;
+        let tx_leaf_count = max_tx_len.div_ceil(bytes_per_leaf);
 
         let mut hasher = MerkleHasher::with_leaves(max_tx_count);
 
