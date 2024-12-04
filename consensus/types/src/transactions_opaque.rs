@@ -348,9 +348,17 @@ impl<E: EthSpec> TestRandom for TransactionsOpaque<E> {
     }
 }
 
-impl<E> Arbitrary<'_> for TransactionsOpaque<E> {
-    fn arbitrary(_u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
-        todo!("impl arbitrary")
+impl<E: EthSpec> Arbitrary<'_> for TransactionsOpaque<E> {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+        let mut txs = Self::default();
+        let num_txs = usize::arbitrary(u).unwrap() % TEST_RANDOM_MAX_TX_COUNT;
+        for _ in 0..num_txs {
+            let tx_len = usize::arbitrary(u).unwrap() % TEST_RANDOM_MAX_TX_BYTES;
+            let mut tx = vec![0; tx_len];
+            u.fill_buffer(&mut tx[..]).unwrap();
+            txs.push(&tx).unwrap();
+        }
+        Ok(txs)
     }
 }
 
