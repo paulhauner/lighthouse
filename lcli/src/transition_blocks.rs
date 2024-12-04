@@ -128,6 +128,19 @@ pub fn run<E: EthSpec>(
     info!("Doing {} runs", runs);
     info!("{:?}", &config);
 
+    // TODO(paul): remove me, just for testing
+    for i in 0..runs {
+        let block: SignedBeaconBlock<E> = load_from_ssz_with(
+            block_path.as_ref().unwrap(),
+            &spec,
+            SignedBeaconBlock::from_ssz_bytes,
+        )?;
+        assert!(block.slot() != u64::MAX);
+        if i + 1 == runs {
+            return Ok(());
+        }
+    }
+
     /*
      * Load the block and pre-state from disk or beaconAPI URL.
      */
