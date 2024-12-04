@@ -3,7 +3,11 @@ use crate::EthSpec;
 use arbitrary::Arbitrary;
 use derivative::Derivative;
 use rand::RngCore;
-use serde::{ser::Serializer, Deserialize, Deserializer, Serialize};
+use serde::{
+    ser::{SerializeSeq, Serializer},
+    Deserialize, Deserializer, Serialize,
+};
+use serde_utils::hex;
 use ssz::{encode_length, read_offset, Decode, DecodeError, Encode, BYTES_PER_LENGTH_OFFSET};
 use std::iter::IntoIterator;
 use std::marker::PhantomData;
@@ -24,45 +28,23 @@ pub enum Error {
 
 /// The list of transactions in an execution payload.
 ///
-/// This data-structure represents the transactions very closely to how they're
+/// This data-structure represents the transactions similarly to how they're
 /// encoded as SSZ. This makes for fast and low-allocation-count `ssz::Decode`.
-///
-/// The impact on iterating/accessing transactions in this data structure is
-/// minimal or negligible compared to a `Vec<Vec<>>`.
 #[derive(Debug, Clone, Derivative)]
 #[derivative(Default, PartialEq, Hash(bound = "E: EthSpec"))]
 pub struct TransactionsOpaque<E> {
+    /// Points to the first byte of each transaction in `bytes`.
     offsets: Vec<usize>,
+    /// All transactions, concatenated together.
     bytes: Vec<u8>,
+    /// `EthSpec` to capture maximum allowed lengths.
     _phantom: PhantomData<E>,
 }
 
-impl<E: EthSpec> TransactionsOpaque<E> {
+impl<E> TransactionsOpaque<E> {
     /// Creates an empty list.
     pub fn empty() -> Self {
         Self::default()
-    }
-
-    /// Adds an `item` (i.e. transaction) to the list.
-    ///
-    /// ## Errors
-    ///
-    /// - If the `item` is longer than `EthSpec::max_bytes_per_transaction()`.
-    /// - If the operation would make this list longer than
-    /// `EthSpec::max_transactions_per_payload()`.
-    pub fn push(&mut self, item: &[u8]) -> Result<(), Error> {
-        let max_tx_count = <E as EthSpec>::max_transactions_per_payload();
-        let max_tx_bytes = <E as EthSpec>::max_bytes_per_transaction();
-
-        if item.len() > max_tx_bytes {
-            Err(Error::TransactionTooBig)
-        } else if self.offsets.len() >= max_tx_count {
-            Err(Error::TooManyTransactions)
-        } else {
-            self.offsets.push(self.bytes.len());
-            self.bytes.extend_from_slice(item);
-            Ok(())
-        }
     }
 
     /// Iterates all transactions in `self`.
@@ -84,6 +66,30 @@ impl<E: EthSpec> TransactionsOpaque<E> {
     /// serialized.
     fn len_offset_bytes(&self) -> usize {
         self.offsets.len().saturating_mul(BYTES_PER_LENGTH_OFFSET)
+    }
+}
+
+impl<E: EthSpec> TransactionsOpaque<E> {
+    /// Adds an `item` (i.e. transaction) to the list.
+    ///
+    /// ## Errors
+    ///
+    /// - If the `item` is longer than `EthSpec::max_bytes_per_transaction()`.
+    /// - If the operation would make this list longer than
+    ///   `EthSpec::max_transactions_per_payload()`.
+    pub fn push(&mut self, item: &[u8]) -> Result<(), Error> {
+        let max_tx_count = <E as EthSpec>::max_transactions_per_payload();
+        let max_tx_bytes = <E as EthSpec>::max_bytes_per_transaction();
+
+        if item.len() > max_tx_bytes {
+            Err(Error::TransactionTooBig)
+        } else if self.offsets.len() >= max_tx_count {
+            Err(Error::TooManyTransactions)
+        } else {
+            self.offsets.push(self.bytes.len());
+            self.bytes.extend_from_slice(item);
+            Ok(())
+        }
     }
 }
 
@@ -230,19 +236,54 @@ impl<'a> Iterator for TransactionsOpaqueIter<'a> {
     }
 }
 
-/// Serialization for http requests.
-impl<E> Serialize for TransactionsOpaque<E> {
-    fn serialize<S: Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
-        todo!("impl serde serialize")
+#[derive(Default)]
+pub struct Visitor<E> {
+    _phantom: PhantomData<E>,
+}
+
+impl<'a, E> serde::de::Visitor<'a> for Visitor<E>
+where
+    E: EthSpec,
+{
+    type Value = TransactionsOpaque<E>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(formatter, "a list of 0x-prefixed hex bytes")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'a>,
+    {
+        let mut txs: TransactionsOpaque<E> = <_>::default();
+
+        while let Some(hex_str) = seq.next_element::<&str>()? {
+            let bytes = hex::decode(hex_str).map_err(serde::de::Error::custom)?;
+            txs.push(&bytes).map_err(|e| {
+                serde::de::Error::custom(format!("failed to deserialize transaction: {:?}.", e))
+            })?;
+        }
+
+        Ok(txs)
     }
 }
 
-impl<'de, E> Deserialize<'de> for TransactionsOpaque<E> {
-    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+impl<E> Serialize for TransactionsOpaque<E> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut seq = serializer.serialize_seq(Some(self.len()))?;
+        for bytes in self {
+            seq.serialize_element(&hex::encode(&bytes))?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de, E: EthSpec> Deserialize<'de> for TransactionsOpaque<E> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        todo!("impl serde deserialize")
+        deserializer.deserialize_seq(Visitor::default())
     }
 }
 
@@ -451,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn ssz_round_trip() {
+    fn ssz() {
         for (test, transactions, reference) in TestVectors::default().iter() {
             assert_eq!(
                 transactions.as_ssz_bytes(),
@@ -565,6 +606,51 @@ mod tests {
                 reference.tree_hash_root(),
                 "{test}"
             )
+        }
+    }
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(transparent)]
+    struct SerdeWrapper {
+        #[serde(with = "ssz_types::serde_utils::list_of_hex_var_list")]
+        reference: ReferenceTransactions,
+    }
+
+    #[test]
+    fn json() {
+        for (test, transactions, reference) in TestVectors::default().iter() {
+            let reference = SerdeWrapper { reference };
+
+            assert_eq!(
+                serde_json::to_string(&transactions).unwrap(),
+                serde_json::to_string(&reference).unwrap(),
+                "{test} - to json"
+            );
+
+            assert_eq!(
+                transactions,
+                serde_json::from_str(&serde_json::to_string(&reference).unwrap()).unwrap(),
+                "{test} - deserialize"
+            );
+        }
+    }
+
+    #[test]
+    fn yaml() {
+        for (test, transactions, reference) in TestVectors::default().iter() {
+            let reference = SerdeWrapper { reference };
+
+            assert_eq!(
+                serde_yaml::to_string(&transactions).unwrap(),
+                serde_yaml::to_string(&reference).unwrap(),
+                "{test} - to json"
+            );
+
+            assert_eq!(
+                transactions,
+                serde_yaml::from_str(&serde_yaml::to_string(&reference).unwrap()).unwrap(),
+                "{test} - deserialize"
+            );
         }
     }
 }
