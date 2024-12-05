@@ -38,9 +38,14 @@ impl Encode for Checkpoint {
         self.root.ssz_append(buf);
     }
 
-    #[allow(clippy::arithmetic_side_effects)]
+    fn ssz_fixed_len() -> usize {
+        <Epoch as Decode>::ssz_fixed_len()
+            .checked_add(<Hash256 as Decode>::ssz_fixed_len())
+            .expect("checkpoint ssz_fixed_len too large")
+    }
+
     fn ssz_bytes_len(&self) -> usize {
-        self.epoch.ssz_bytes_len() + self.root.ssz_bytes_len()
+        <Self as Encode>::ssz_fixed_len()
     }
 }
 
@@ -50,9 +55,8 @@ impl Decode for Checkpoint {
         true
     }
 
-    #[allow(clippy::arithmetic_side_effects)]
     fn ssz_fixed_len() -> usize {
-        <Epoch as Decode>::ssz_fixed_len() + <Hash256 as Decode>::ssz_fixed_len()
+        <Self as Encode>::ssz_fixed_len()
     }
 
     fn from_ssz_bytes(bytes: &[u8]) -> Result<Self, ssz::DecodeError> {
