@@ -2334,6 +2334,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "educe"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d7bc049e1bd8cdeb31b68bbd586a9464ecf9f3944af3958a7a9d0f8b9799417"
+dependencies = [
+ "enum-ordinalize",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.77",
+]
+
+[[package]]
 name = "ef_tests"
 version = "0.2.0"
 dependencies = [
@@ -2445,6 +2457,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1e6a265c649f3f5979b601d26f1d05ada116434c87741c9493cb56218f76cbc"
 dependencies = [
  "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.77",
+]
+
+[[package]]
+name = "enum-ordinalize"
+version = "4.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fea0dcfa4e54eeb516fe454635a95753ddd39acda650ce703031c6973e315dd5"
+dependencies = [
+ "enum-ordinalize-derive",
+]
+
+[[package]]
+name = "enum-ordinalize-derive"
+version = "4.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d28318a75d4aead5c4db25382e8ef717932d0346600cacae6357eb5941bc5ff"
+dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.77",
@@ -2823,20 +2855,23 @@ dependencies = [
 
 [[package]]
 name = "ethereum_ssz"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e999563461faea0ab9bc0024e5e66adcee35881f3d5062f52f31a4070fe1522"
+version = "0.8.0"
+source = "git+https://github.com/sigp/ethereum_ssz?rev=4a930fd689cd686b953edc44ee43b38857b20bd4#4a930fd689cd686b953edc44ee43b38857b20bd4"
 dependencies = [
  "alloy-primitives",
+ "arbitrary",
+ "ethereum_serde_utils",
  "itertools 0.13.0",
+ "serde",
+ "serde_derive",
  "smallvec",
+ "typenum",
 ]
 
 [[package]]
 name = "ethereum_ssz_derive"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3deae99c8e74829a00ba7a92d49055732b3c1f093f2ccfa3cbc621679b6fa91"
+version = "0.8.0"
+source = "git+https://github.com/sigp/ethereum_ssz?rev=4a930fd689cd686b953edc44ee43b38857b20bd4#4a930fd689cd686b953edc44ee43b38857b20bd4"
 dependencies = [
  "darling 0.20.10",
  "proc-macro2",
@@ -5485,12 +5520,11 @@ dependencies = [
 [[package]]
 name = "milhouse"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f68e33f98199224d1073f7c1468ea6abfea30736306fb79c7181a881e97ea32f"
+source = "git+https://github.com/paulhauner/milhouse?rev=f5c29ce4eba29fe6b21837ed902869a60aa2b7c0#f5c29ce4eba29fe6b21837ed902869a60aa2b7c0"
 dependencies = [
  "alloy-primitives",
  "arbitrary",
- "derivative",
+ "educe",
  "ethereum_hashing",
  "ethereum_ssz",
  "ethereum_ssz_derive",
@@ -8136,12 +8170,13 @@ dependencies = [
 [[package]]
 name = "ssz_types"
 version = "0.8.0"
-source = "git+https://github.com/paulhauner/ssz_types.git?rev=26716095d94e02a2cbd72c94a8b3b8549ecf14d1#26716095d94e02a2cbd72c94a8b3b8549ecf14d1"
+source = "git+https://github.com/paulhauner/ssz_types.git?rev=5e4be506f34f6448452b377672e9512d7ba016aa#5e4be506f34f6448452b377672e9512d7ba016aa"
 dependencies = [
  "arbitrary",
  "derivative",
  "ethereum_serde_utils",
  "ethereum_ssz",
+ "ethereum_ssz_derive",
  "itertools 0.13.0",
  "serde",
  "serde_derive",
