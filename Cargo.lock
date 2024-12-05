@@ -8170,7 +8170,7 @@ dependencies = [
 [[package]]
 name = "ssz_types"
 version = "0.8.0"
-source = "git+https://github.com/paulhauner/ssz_types.git?rev=5e4be506f34f6448452b377672e9512d7ba016aa#5e4be506f34f6448452b377672e9512d7ba016aa"
+source = "git+https://github.com/paulhauner/ssz_types.git?rev=ccdb6b10feb1902605776051a0c445fabb5d6fa3#ccdb6b10feb1902605776051a0c445fabb5d6fa3"
 dependencies = [
  "arbitrary",
  "derivative",
