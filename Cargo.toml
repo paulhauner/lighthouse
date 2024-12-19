@@ -8,11 +8,11 @@ members = [
     "beacon_node/builder_client",
     "beacon_node/client",
     "beacon_node/eth1",
-    "beacon_node/lighthouse_network",
-    "beacon_node/lighthouse_network/gossipsub",
     "beacon_node/execution_layer",
     "beacon_node/http_api",
     "beacon_node/http_metrics",
+    "beacon_node/lighthouse_network",
+    "beacon_node/lighthouse_network/gossipsub",
     "beacon_node/network",
     "beacon_node/store",
     "beacon_node/timer",
@@ -30,40 +30,40 @@ members = [
     "common/eth2_interop_keypairs",
     "common/eth2_network_config",
     "common/eth2_wallet_manager",
-    "common/metrics",
     "common/lighthouse_version",
     "common/lockfile",
     "common/logging",
     "common/lru_cache",
     "common/malloc_utils",
+    "common/metrics",
+    "common/monitoring_api",
     "common/oneshot_broadcast",
     "common/pretty_reqwest_error",
     "common/sensitive_url",
     "common/slot_clock",
     "common/system_health",
-    "common/task_executor",
     "common/target_check",
+    "common/task_executor",
     "common/test_random_derive",
     "common/unused_port",
     "common/validator_dir",
     "common/warp_utils",
-    "common/monitoring_api",
-
-    "database_manager",
-
-    "consensus/int_to_bytes",
     "consensus/fixed_bytes",
     "consensus/fork_choice",
+
+    "consensus/int_to_bytes",
     "consensus/proto_array",
     "consensus/safe_arith",
     "consensus/state_processing",
     "consensus/swap_or_not_shuffle",
 
     "crypto/bls",
-    "crypto/kzg",
     "crypto/eth2_key_derivation",
     "crypto/eth2_keystore",
     "crypto/eth2_wallet",
+    "crypto/kzg",
+
+    "database_manager",
 
     "lcli",
 
@@ -78,8 +78,8 @@ members = [
     "testing/execution_engine_integration",
     "testing/node_test_rig",
     "testing/simulator",
-    "testing/test-test_logger",
     "testing/state_transition_vectors",
+    "testing/test-test_logger",
     "testing/web3signer_tests",
 
     "validator_client",
@@ -216,7 +216,7 @@ tree_hash_derive = "0.8"
 url = "2"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 warp = { version = "0.3.7", default-features = false, features = ["tls"] }
-zeroize = { version = "1", features = ["zeroize_derive"] }
+zeroize = { version = "1", features = ["zeroize_derive", "serde"] }
 zip = "0.6"
 
 # Local crates.
