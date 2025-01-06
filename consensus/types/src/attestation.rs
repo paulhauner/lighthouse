@@ -19,6 +19,7 @@ use super::{
 #[derive(Debug, PartialEq)]
 pub enum Error {
     SszTypesError(ssz_types::Error),
+    BitfieldError(ssz::BitfieldError),
     AlreadySigned(usize),
     SubnetCountIsZero(ArithError),
     IncorrectStateVariant,
@@ -225,7 +226,7 @@ impl<E: EthSpec> Attestation<E> {
         }
     }
 
-    pub fn get_aggregation_bit(&self, index: usize) -> Result<bool, ssz_types::Error> {
+    pub fn get_aggregation_bit(&self, index: usize) -> Result<bool, ssz::BitfieldError> {
         match self {
             Attestation::Base(att) => att.aggregation_bits.get(index),
             Attestation::Electra(att) => att.aggregation_bits.get(index),
@@ -337,13 +338,13 @@ impl<E: EthSpec> AttestationElectra<E> {
         if self
             .aggregation_bits
             .get(committee_position)
-            .map_err(Error::SszTypesError)?
+            .map_err(Error::BitfieldError)?
         {
             Err(Error::AlreadySigned(committee_position))
         } else {
             self.aggregation_bits
                 .set(committee_position, true)
-                .map_err(Error::SszTypesError)?;
+                .map_err(Error::BitfieldError)?;
 
             self.signature.add_assign(signature);
 
@@ -395,13 +396,13 @@ impl<E: EthSpec> AttestationBase<E> {
         if self
             .aggregation_bits
             .get(committee_position)
-            .map_err(Error::SszTypesError)?
+            .map_err(Error::BitfieldError)?
         {
             Err(Error::AlreadySigned(committee_position))
         } else {
             self.aggregation_bits
                 .set(committee_position, true)
-                .map_err(Error::SszTypesError)?;
+                .map_err(Error::BitfieldError)?;
 
             self.signature.add_assign(signature);
 
@@ -411,7 +412,7 @@ impl<E: EthSpec> AttestationBase<E> {
 
     pub fn extend_aggregation_bits(
         &self,
-    ) -> Result<BitList<E::MaxValidatorsPerSlot>, ssz_types::Error> {
+    ) -> Result<BitList<E::MaxValidatorsPerSlot>, ssz::BitfieldError> {
         self.aggregation_bits.resize::<E::MaxValidatorsPerSlot>()
     }
 }
