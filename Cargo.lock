@@ -827,7 +827,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-stream",
- "tree_hash 0.9.0",
+ "tree_hash",
  "tree_hash_derive",
  "types",
 ]
@@ -1035,7 +1035,7 @@ dependencies = [
  "rand",
  "safe_arith",
  "serde",
- "tree_hash 0.9.0",
+ "tree_hash",
  "zeroize",
 ]
 
@@ -1969,7 +1969,7 @@ dependencies = [
  "reqwest",
  "serde_json",
  "sha2 0.9.9",
- "tree_hash 0.9.0",
+ "tree_hash",
  "types",
 ]
 
@@ -2368,7 +2368,7 @@ dependencies = [
  "snap",
  "state_processing",
  "swap_or_not_shuffle",
- "tree_hash 0.9.0",
+ "tree_hash",
  "tree_hash_derive",
  "types",
 ]
@@ -2571,7 +2571,7 @@ dependencies = [
  "superstruct",
  "task_executor",
  "tokio",
- "tree_hash 0.9.0",
+ "tree_hash",
  "types",
 ]
 
@@ -3094,7 +3094,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-stream",
- "tree_hash 0.9.0",
+ "tree_hash",
  "tree_hash_derive",
  "triehash",
  "types",
@@ -3487,7 +3487,7 @@ dependencies = [
  "slog",
  "state_processing",
  "tokio",
- "tree_hash 0.9.0",
+ "tree_hash",
  "types",
 ]
 
@@ -4012,7 +4012,7 @@ dependencies = [
  "task_executor",
  "tokio",
  "tokio-stream",
- "tree_hash 0.9.0",
+ "tree_hash",
  "types",
  "warp",
  "warp_utils",
@@ -4706,7 +4706,7 @@ dependencies = [
  "rust_eth_kzg",
  "serde",
  "serde_json",
- "tree_hash 0.9.0",
+ "tree_hash",
 ]
 
 [[package]]
@@ -4755,7 +4755,7 @@ dependencies = [
  "snap",
  "state_processing",
  "store",
- "tree_hash 0.9.0",
+ "tree_hash",
  "types",
  "validator_dir",
 ]
@@ -5678,8 +5678,8 @@ dependencies = [
 
 [[package]]
 name = "milhouse"
-version = "0.3.0"
-source = "git+https://github.com/paulhauner/milhouse?rev=b6bccd3df29c7056bec56987f428df5f7a0f8b04#b6bccd3df29c7056bec56987f428df5f7a0f8b04"
+version = "0.4.0"
+source = "git+https://github.com/paulhauner/milhouse?rev=1df8db756200fa1ad77af17dbc036b85a444fd1a#1df8db756200fa1ad77af17dbc036b85a444fd1a"
 dependencies = [
  "alloy-primitives",
  "arbitrary",
@@ -5692,7 +5692,7 @@ dependencies = [
  "rayon",
  "serde",
  "smallvec",
- "tree_hash 0.8.0",
+ "tree_hash",
  "triomphe",
  "typenum",
  "vec_map",
@@ -8144,7 +8144,7 @@ dependencies = [
  "ssz_types",
  "strum",
  "tempfile",
- "tree_hash 0.9.0",
+ "tree_hash",
  "tree_hash_derive",
  "types",
 ]
@@ -8381,7 +8381,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "smallvec",
- "tree_hash 0.9.0",
+ "tree_hash",
  "typenum",
 ]
 
@@ -8415,7 +8415,7 @@ dependencies = [
  "ssz_types",
  "test_random_derive",
  "tokio",
- "tree_hash 0.9.0",
+ "tree_hash",
  "types",
 ]
 
@@ -9275,17 +9275,6 @@ dependencies = [
 
 [[package]]
 name = "tree_hash"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "373495c23db675a5192de8b610395e1bec324d596f9e6111192ce903dc11403a"
-dependencies = [
- "alloy-primitives",
- "ethereum_hashing",
- "smallvec",
-]
-
-[[package]]
-name = "tree_hash"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3cc60ae4c4236ee721305d0f0b5aa3e8ef5b66f3fa61d17072430bc246d6694a"
@@ -9390,7 +9379,7 @@ dependencies = [
  "tempfile",
  "test_random_derive",
  "tokio",
- "tree_hash 0.9.0",
+ "tree_hash",
  "tree_hash_derive",
 ]
 
@@ -9616,7 +9605,7 @@ dependencies = [
  "lockfile",
  "rand",
  "tempfile",
- "tree_hash 0.9.0",
+ "tree_hash",
  "types",
 ]
 
@@ -9703,7 +9692,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
- "tree_hash 0.9.0",
+ "tree_hash",
  "types",
  "validator_http_api",
  "zeroize",
@@ -9732,7 +9721,7 @@ dependencies = [
  "slog",
  "slot_clock",
  "tokio",
- "tree_hash 0.9.0",
+ "tree_hash",
  "types",
  "validator_metrics",
  "validator_store",
