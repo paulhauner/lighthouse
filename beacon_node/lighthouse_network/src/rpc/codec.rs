@@ -186,6 +186,7 @@ impl<E: EthSpec> Decoder for SSZSnappyInboundCodec<E> {
                 handle_rpc_request(
                     self.protocol.versioned_protocol,
                     &decoded_buffer,
+                    self.fork_context.current_fork(),
                     &self.fork_context.spec,
                 )
             }
@@ -555,6 +556,7 @@ fn handle_length(
 fn handle_rpc_request<E: EthSpec>(
     versioned_protocol: SupportedProtocol,
     decoded_buffer: &[u8],
+    current_fork: ForkName,
     spec: &ChainSpec,
 ) -> Result<Option<RequestType<E>>, RPCError> {
     match versioned_protocol {
@@ -586,9 +588,23 @@ fn handle_rpc_request<E: EthSpec>(
                 )?,
             }),
         ))),
-        SupportedProtocol::BlobsByRangeV1 => Ok(Some(RequestType::BlobsByRange(
-            BlobsByRangeRequest::from_ssz_bytes(decoded_buffer)?,
-        ))),
+        SupportedProtocol::BlobsByRangeV1 => {
+            let req = BlobsByRangeRequest::from_ssz_bytes(decoded_buffer)?;
+            let max_requested_blobs = req
+                .count
+                .saturating_mul(spec.max_blobs_per_block_by_fork(current_fork));
+            // TODO(pawan): change this to max_blobs_per_rpc_request in the alpha10 PR
+            if max_requested_blobs > spec.max_request_blob_sidecars {
+                return Err(RPCError::ErrorResponse(
+                    RpcErrorResponse::InvalidRequest,
+                    format!(
+                        "requested exceeded limit. allowed: {}, requested: {}",
+                        spec.max_request_blob_sidecars, max_requested_blobs
+                    ),
+                ));
+            }
+            Ok(Some(RequestType::BlobsByRange(req)))
+        }
         SupportedProtocol::BlobsByRootV1 => {
             Ok(Some(RequestType::BlobsByRoot(BlobsByRootRequest {
                 blob_ids: RuntimeVariableList::from_ssz_bytes(

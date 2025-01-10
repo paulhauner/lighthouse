@@ -154,6 +154,7 @@ pub struct ExecutionBlockGenerator<E: EthSpec> {
     pub blobs_bundles: HashMap<PayloadId, BlobsBundle<E>>,
     pub kzg: Option<Arc<Kzg>>,
     rng: Arc<Mutex<StdRng>>,
+    spec: Arc<ChainSpec>,
 }
 
 fn make_rng() -> Arc<Mutex<StdRng>> {
@@ -172,6 +173,7 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
         cancun_time: Option<u64>,
         prague_time: Option<u64>,
         osaka_time: Option<u64>,
+        spec: Arc<ChainSpec>,
         kzg: Option<Arc<Kzg>>,
     ) -> Self {
         let mut gen = Self {
@@ -192,6 +194,7 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
             blobs_bundles: <_>::default(),
             kzg,
             rng: make_rng(),
+            spec,
         };
 
         gen.insert_pow_block(0).unwrap();
@@ -697,7 +700,11 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
         if execution_payload.fork_name().deneb_enabled() {
             // get random number between 0 and Max Blobs
             let mut rng = self.rng.lock();
-            let num_blobs = rng.gen::<usize>() % (E::max_blobs_per_block() + 1);
+            let max_blobs = self
+                .spec
+                .max_blobs_per_block_by_fork(execution_payload.fork_name())
+                as usize;
+            let num_blobs = rng.gen::<usize>() % (max_blobs + 1);
             let (bundle, transactions) = generate_blobs(num_blobs)?;
             for tx in Vec::from(transactions) {
                 execution_payload
@@ -906,6 +913,7 @@ mod test {
         const TERMINAL_DIFFICULTY: u64 = 10;
         const TERMINAL_BLOCK: u64 = 10;
         const DIFFICULTY_INCREMENT: u64 = 1;
+        let spec = Arc::new(MainnetEthSpec::default_spec());
 
         let mut generator: ExecutionBlockGenerator<MainnetEthSpec> = ExecutionBlockGenerator::new(
             Uint256::from(TERMINAL_DIFFICULTY),
@@ -915,6 +923,7 @@ mod test {
             None,
             None,
             None,
+            spec,
             None,
         );
 

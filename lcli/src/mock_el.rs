@@ -9,6 +9,7 @@ use execution_layer::{
 };
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
+use std::sync::Arc;
 use types::*;
 
 pub fn run<E: EthSpec>(mut env: Environment<E>, matches: &ArgMatches) -> Result<(), String> {
@@ -22,7 +23,7 @@ pub fn run<E: EthSpec>(mut env: Environment<E>, matches: &ArgMatches) -> Result<
     let osaka_time = parse_optional(matches, "osaka-time")?;
 
     let handle = env.core_context().executor.handle().unwrap();
-    let spec = &E::default_spec();
+    let spec = Arc::new(E::default_spec());
     let jwt_key = JwtKey::from_slice(&DEFAULT_JWT_SECRET).unwrap();
     std::fs::write(jwt_path, hex::encode(DEFAULT_JWT_SECRET)).unwrap();
 
@@ -41,7 +42,7 @@ pub fn run<E: EthSpec>(mut env: Environment<E>, matches: &ArgMatches) -> Result<
         osaka_time,
     };
     let kzg = None;
-    let server: MockServer<E> = MockServer::new_with_config(&handle, config, kzg);
+    let server: MockServer<E> = MockServer::new_with_config(&handle, config, spec, kzg);
 
     if all_payloads_valid {
         eprintln!(
