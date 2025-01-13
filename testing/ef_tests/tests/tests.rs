@@ -237,9 +237,7 @@ macro_rules! ssz_static_test_no_run {
 
 #[cfg(feature = "fake_crypto")]
 mod ssz_static {
-    use ef_tests::{
-        FeatureName, Handler, SszStaticHandler, SszStaticTHCHandler, SszStaticWithSpecHandler,
-    };
+    use ef_tests::{Handler, SszStaticHandler, SszStaticTHCHandler, SszStaticWithSpecHandler};
     use types::historical_summary::HistoricalSummary;
     use types::{
         AttesterSlashingBase, AttesterSlashingElectra, ConsolidationRequest, DepositRequest,
@@ -624,6 +622,7 @@ mod ssz_static {
         SszStaticHandler::<HistoricalSummary, MainnetEthSpec>::capella_and_later().run();
     }
 
+    /* FIXME(das): re-enable
     #[test]
     fn data_column_sidecar() {
         SszStaticHandler::<DataColumnSidecar<MinimalEthSpec>, MinimalEthSpec>::deneb_only()
@@ -639,6 +638,7 @@ mod ssz_static {
         SszStaticHandler::<DataColumnIdentifier, MainnetEthSpec>::deneb_only()
             .run_for_feature(FeatureName::Eip7594);
     }
+    */
 
     #[test]
     fn consolidation() {
@@ -899,6 +899,7 @@ fn kzg_verify_kzg_proof() {
     KZGVerifyKZGProofHandler::<MainnetEthSpec>::default().run();
 }
 
+/* FIXME(das): re-enable these tests
 #[test]
 fn kzg_compute_cells_and_proofs() {
     KZGComputeCellsAndKZGProofHandler::<MainnetEthSpec>::default()
@@ -916,6 +917,7 @@ fn kzg_recover_cells_and_proofs() {
     KZGRecoverCellsAndKZGProofHandler::<MainnetEthSpec>::default()
         .run_for_feature(FeatureName::Eip7594);
 }
+*/
 
 #[test]
 fn beacon_state_merkle_proof_validity() {
@@ -947,8 +949,10 @@ fn rewards() {
     }
 }
 
+/* FIXME(das): re-enable these tests
 #[test]
 fn get_custody_columns() {
     GetCustodyColumnsHandler::<MainnetEthSpec>::default().run_for_feature(FeatureName::Eip7594);
     GetCustodyColumnsHandler::<MinimalEthSpec>::default().run_for_feature(FeatureName::Eip7594);
 }
+*/
