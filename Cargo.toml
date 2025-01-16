@@ -155,7 +155,7 @@ libsecp256k1 = "0.7"
 log = "0.4"
 lru = "0.12"
 maplit = "1"
-milhouse = { rev = "1df8db756200fa1ad77af17dbc036b85a444fd1a", git = "https://github.com/paulhauner/milhouse" }
+milhouse = "0.5"
 num_cpus = "1"
 parking_lot = "0.12"
 paste = "1"
