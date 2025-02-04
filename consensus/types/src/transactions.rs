@@ -499,6 +499,11 @@ mod tests {
     fn ssz() {
         for (test, transactions, reference) in TestVectors::default().iter() {
             assert_eq!(
+                transactions.ssz_bytes_len(),
+                reference.ssz_bytes_len(),
+                "{test} - ssz_bytes_len"
+            );
+            assert_eq!(
                 transactions.as_ssz_bytes(),
                 reference.as_ssz_bytes(),
                 "{test} - serialization"
