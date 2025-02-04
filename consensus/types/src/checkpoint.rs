@@ -33,6 +33,10 @@ impl Encode for Checkpoint {
         true
     }
 
+    fn ssz_fixed_len() -> usize {
+        <Epoch as Encode>::ssz_fixed_len().saturating_add(<Hash256 as Encode>::ssz_fixed_len())
+    }
+
     fn ssz_append(&self, buf: &mut Vec<u8>) {
         self.epoch.ssz_append(buf);
         self.root.ssz_append(buf);
