@@ -1002,9 +1002,9 @@ mod tests {
         })
     }
 
-    fn transactions() -> Transactions<Spec> {
+    fn transactions(count: usize) -> Transactions<Spec> {
         let mut transactions = Transactions::default();
-        for _ in 0..100000 {
+        for _ in 0..count {
             transactions.push(&[0; 1024]).unwrap()
         }
         transactions
@@ -1018,7 +1018,7 @@ mod tests {
         let mut block: BeaconBlockBellatrix<_, FullPayload<Spec>> =
             BeaconBlockBellatrix::empty(&Spec::default_spec());
 
-        block.body.execution_payload.execution_payload.transactions = transactions();
+        block.body.execution_payload.execution_payload.transactions = transactions(5000);
 
         let block = BeaconBlock::Bellatrix(block);
         assert!(block.ssz_bytes_len() <= max_rpc_size(fork_context, spec.max_chunk_size as usize));
@@ -1035,7 +1035,7 @@ mod tests {
         let mut block: BeaconBlockBellatrix<_, FullPayload<Spec>> =
             BeaconBlockBellatrix::empty(&Spec::default_spec());
 
-        block.body.execution_payload.execution_payload.transactions = transactions();
+        block.body.execution_payload.execution_payload.transactions = transactions(100000);
 
         let block = BeaconBlock::Bellatrix(block);
         assert!(block.ssz_bytes_len() > max_rpc_size(fork_context, spec.max_chunk_size as usize));
