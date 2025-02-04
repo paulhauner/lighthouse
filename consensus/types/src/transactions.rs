@@ -257,8 +257,8 @@ where
     {
         let mut txs: Transactions<E> = <_>::default();
 
-        while let Some(hex_str) = seq.next_element::<&str>()? {
-            let bytes = hex::decode(hex_str).map_err(serde::de::Error::custom)?;
+        while let Some(hex_str) = seq.next_element::<String>()? {
+            let bytes = hex::decode(&hex_str).map_err(serde::de::Error::custom)?;
             txs.push(&bytes).map_err(|e| {
                 serde::de::Error::custom(format!("failed to deserialize transaction: {:?}.", e))
             })?;
