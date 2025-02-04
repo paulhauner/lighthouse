@@ -33,8 +33,9 @@ impl Encode for Checkpoint {
         true
     }
 
+    #[allow(clippy::arithmetic_side_effects)]
     fn ssz_fixed_len() -> usize {
-        <Epoch as Encode>::ssz_fixed_len().saturating_add(<Hash256 as Encode>::ssz_fixed_len())
+        <Epoch as Encode>::ssz_fixed_len() + <Hash256 as Encode>::ssz_fixed_len()
     }
 
     fn ssz_append(&self, buf: &mut Vec<u8>) {
