@@ -203,15 +203,15 @@ impl<E: EthSpec> ProductionValidatorClient<E> {
             config.initialized_validators.clone(),
             log.clone(),
         )
-        .await
-        .map_err(|e| {
-            match e {
-                UnableToOpenVotingKeystore(err) => {
-                    format!("Unable to initialize validators: {:?}. If you have recently moved the location of your data directory \
+            .await
+            .map_err(|e| {
+                match e {
+                    UnableToOpenVotingKeystore(err) => {
+                        format!("Unable to initialize validators: {:?}. If you have recently moved the location of your data directory \
                     make sure to update the location of voting_keystore_path in your validator_definitions.yml", err)
-                },
-                err => {
-                    format!("Unable to initialize validators: {:?}", err)}
+                    },
+                    err => {
+                        format!("Unable to initialize validators: {:?}", err)}
                 }
             })?;
 
