@@ -8,6 +8,7 @@ use lighthouse_network::service::api_types::AppRequestId;
 use lighthouse_network::{rpc::max_rpc_size, NetworkEvent, ReportSource, Response};
 use slog::{debug, warn, Level};
 use ssz::Encode;
+use ssz_types::VariableList;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -15,24 +16,18 @@ use tokio::time::sleep;
 use types::{
     BeaconBlock, BeaconBlockAltair, BeaconBlockBase, BeaconBlockBellatrix, BlobSidecar, ChainSpec,
     EmptyBlock, Epoch, EthSpec, FixedBytesExtended, ForkContext, ForkName, Hash256, MinimalEthSpec,
-    RuntimeVariableList, Signature, SignedBeaconBlock, Slot, Transactions,
+    RuntimeVariableList, Signature, SignedBeaconBlock, Slot,
 };
 
 type E = MinimalEthSpec;
 
-fn transactions(n: usize) -> Transactions<E> {
-    let mut transactions = Transactions::default();
-    for _ in 0..n {
-        transactions.push(&[0; 1024]).unwrap()
-    }
-    transactions
-}
-
 /// Bellatrix block with length < max_rpc_size.
 fn bellatrix_block_small(fork_context: &ForkContext, spec: &ChainSpec) -> BeaconBlock<E> {
     let mut block = BeaconBlockBellatrix::<E>::empty(spec);
+    let tx = VariableList::from(vec![0; 1024]);
+    let txs = VariableList::from(std::iter::repeat(tx).take(5000).collect::<Vec<_>>());
 
-    block.body.execution_payload.execution_payload.transactions = transactions(5000);
+    block.body.execution_payload.execution_payload.transactions = txs;
 
     let block = BeaconBlock::Bellatrix(block);
     assert!(block.ssz_bytes_len() <= max_rpc_size(fork_context, spec.max_chunk_size as usize));
@@ -44,8 +39,10 @@ fn bellatrix_block_small(fork_context: &ForkContext, spec: &ChainSpec) -> Beacon
 /// Hence, we generate a bellatrix block just greater than `MAX_RPC_SIZE` to test rejection on the rpc layer.
 fn bellatrix_block_large(fork_context: &ForkContext, spec: &ChainSpec) -> BeaconBlock<E> {
     let mut block = BeaconBlockBellatrix::<E>::empty(spec);
+    let tx = VariableList::from(vec![0; 1024]);
+    let txs = VariableList::from(std::iter::repeat(tx).take(100000).collect::<Vec<_>>());
 
-    block.body.execution_payload.execution_payload.transactions = transactions(100_000);
+    block.body.execution_payload.execution_payload.transactions = txs;
 
     let block = BeaconBlock::Bellatrix(block);
     assert!(block.ssz_bytes_len() > max_rpc_size(fork_context, spec.max_chunk_size as usize));

@@ -12,6 +12,7 @@ use parking_lot::Mutex;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use ssz::Decode;
+use ssz_types::VariableList;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tree_hash::TreeHash;
@@ -19,7 +20,8 @@ use tree_hash_derive::TreeHash;
 use types::{
     Blob, ChainSpec, EthSpec, ExecutionBlockHash, ExecutionPayload, ExecutionPayloadBellatrix,
     ExecutionPayloadCapella, ExecutionPayloadDeneb, ExecutionPayloadElectra, ExecutionPayloadFulu,
-    ExecutionPayloadHeader, FixedBytesExtended, ForkName, Hash256, Transactions, Uint256,
+    ExecutionPayloadHeader, FixedBytesExtended, ForkName, Hash256, Transaction, Transactions,
+    Uint256,
 };
 
 use super::DEFAULT_TERMINAL_BLOCK;
@@ -704,7 +706,7 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
                 as usize;
             let num_blobs = rng.gen::<usize>() % (max_blobs + 1);
             let (bundle, transactions) = generate_blobs(num_blobs)?;
-            for tx in &transactions {
+            for tx in Vec::from(transactions) {
                 execution_payload
                     .transactions_mut()
                     .push(tx)
@@ -749,14 +751,13 @@ pub fn generate_blobs<E: EthSpec>(
     let (kzg_commitment, kzg_proof, blob) = load_test_blobs_bundle::<E>()?;
 
     let mut bundle = BlobsBundle::<E>::default();
-    let mut transactions = Transactions::default();
+    let mut transactions = vec![];
 
     for blob_index in 0..n_blobs {
-        let tx = static_valid_tx::<E>();
+        let tx = static_valid_tx::<E>()
+            .map_err(|e| format!("error creating valid tx SSZ bytes: {:?}", e))?;
 
-        transactions
-            .push(&tx)
-            .map_err(|e| format!("invalid tx: {e:?}"))?;
+        transactions.push(tx);
         bundle
             .blobs
             .push(blob.clone())
@@ -771,10 +772,10 @@ pub fn generate_blobs<E: EthSpec>(
             .map_err(|_| format!("blobs are full, blob index: {:?}", blob_index))?;
     }
 
-    Ok((bundle, transactions))
+    Ok((bundle, transactions.into()))
 }
 
-pub fn static_valid_tx<E: EthSpec>() -> Vec<u8> {
+pub fn static_valid_tx<E: EthSpec>() -> Result<Transaction<E::MaxBytesPerTransaction>, String> {
     // This is a real transaction hex encoded, but we don't care about the contents of the transaction.
     let transaction: EthersTransaction = serde_json::from_str(
         r#"{
@@ -795,7 +796,8 @@ pub fn static_valid_tx<E: EthSpec>() -> Vec<u8> {
          }"#,
     )
     .unwrap();
-    transaction.rlp().to_vec()
+    VariableList::new(transaction.rlp().to_vec())
+        .map_err(|e| format!("Failed to convert transaction to SSZ: {:?}", e))
 }
 
 fn payload_id_from_u64(n: u64) -> PayloadId {

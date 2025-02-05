@@ -98,6 +98,7 @@ pub struct JsonExecutionPayload<E: EthSpec> {
     pub base_fee_per_gas: Uint256,
 
     pub block_hash: ExecutionBlockHash,
+    #[serde(with = "ssz_types::serde_utils::list_of_hex_var_list")]
     pub transactions: Transactions<E>,
     #[superstruct(only(V2, V3, V4, V5))]
     pub withdrawals: VariableList<JsonWithdrawal, E::MaxWithdrawalsPerPayload>,
@@ -883,6 +884,7 @@ impl From<ForkchoiceUpdatedResponse> for JsonForkchoiceUpdatedV1Response {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "E: EthSpec")]
 pub struct JsonExecutionPayloadBodyV1<E: EthSpec> {
+    #[serde(with = "ssz_types::serde_utils::list_of_hex_var_list")]
     pub transactions: Transactions<E>,
     pub withdrawals: Option<VariableList<JsonWithdrawal, E::MaxWithdrawalsPerPayload>>,
 }

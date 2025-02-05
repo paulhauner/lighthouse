@@ -933,7 +933,6 @@ mod tests {
     use super::*;
     use crate::rpc::protocol::*;
     use crate::types::{EnrAttestationBitfield, EnrSyncCommitteeBitfield};
-    use types::Transactions;
     use types::{
         blob_sidecar::BlobIdentifier, data_column_sidecar::Cell, BeaconBlock, BeaconBlockAltair,
         BeaconBlockBase, BeaconBlockBellatrix, BeaconBlockHeader, DataColumnIdentifier, EmptyBlock,
@@ -1002,14 +1001,6 @@ mod tests {
         })
     }
 
-    fn transactions(count: usize) -> Transactions<Spec> {
-        let mut transactions = Transactions::default();
-        for _ in 0..count {
-            transactions.push(&[0; 1024]).unwrap()
-        }
-        transactions
-    }
-
     /// Bellatrix block with length < max_rpc_size.
     fn bellatrix_block_small(
         fork_context: &ForkContext,
@@ -1018,7 +1009,10 @@ mod tests {
         let mut block: BeaconBlockBellatrix<_, FullPayload<Spec>> =
             BeaconBlockBellatrix::empty(&Spec::default_spec());
 
-        block.body.execution_payload.execution_payload.transactions = transactions(5000);
+        let tx = VariableList::from(vec![0; 1024]);
+        let txs = VariableList::from(std::iter::repeat(tx).take(5000).collect::<Vec<_>>());
+
+        block.body.execution_payload.execution_payload.transactions = txs;
 
         let block = BeaconBlock::Bellatrix(block);
         assert!(block.ssz_bytes_len() <= max_rpc_size(fork_context, spec.max_chunk_size as usize));
@@ -1035,7 +1029,10 @@ mod tests {
         let mut block: BeaconBlockBellatrix<_, FullPayload<Spec>> =
             BeaconBlockBellatrix::empty(&Spec::default_spec());
 
-        block.body.execution_payload.execution_payload.transactions = transactions(100000);
+        let tx = VariableList::from(vec![0; 1024]);
+        let txs = VariableList::from(std::iter::repeat(tx).take(100000).collect::<Vec<_>>());
+
+        block.body.execution_payload.execution_payload.transactions = txs;
 
         let block = BeaconBlock::Bellatrix(block);
         assert!(block.ssz_bytes_len() > max_rpc_size(fork_context, spec.max_chunk_size as usize));

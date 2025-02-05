@@ -3218,7 +3218,7 @@ pub fn generate_rand_block_and_blobs<E: EthSpec>(
                 execution_layer::test_utils::generate_blobs::<E>(num_blobs).unwrap();
 
             payload.execution_payload.transactions = <_>::default();
-            for tx in &transactions {
+            for tx in Vec::from(transactions) {
                 payload.execution_payload.transactions.push(tx).unwrap();
             }
             message.body.blob_kzg_commitments = bundle.commitments.clone();
@@ -3237,7 +3237,7 @@ pub fn generate_rand_block_and_blobs<E: EthSpec>(
             let (bundle, transactions) =
                 execution_layer::test_utils::generate_blobs::<E>(num_blobs).unwrap();
             payload.execution_payload.transactions = <_>::default();
-            for tx in &transactions {
+            for tx in Vec::from(transactions) {
                 payload.execution_payload.transactions.push(tx).unwrap();
             }
             message.body.blob_kzg_commitments = bundle.commitments.clone();
@@ -3256,7 +3256,7 @@ pub fn generate_rand_block_and_blobs<E: EthSpec>(
             let (bundle, transactions) =
                 execution_layer::test_utils::generate_blobs::<E>(num_blobs).unwrap();
             payload.execution_payload.transactions = <_>::default();
-            for tx in &transactions {
+            for tx in Vec::from(transactions) {
                 payload.execution_payload.transactions.push(tx).unwrap();
             }
             message.body.blob_kzg_commitments = bundle.commitments.clone();

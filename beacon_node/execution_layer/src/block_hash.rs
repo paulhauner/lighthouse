@@ -22,7 +22,9 @@ pub fn calculate_execution_block_hash<E: EthSpec>(
     // Calculate the transactions root.
     // We're currently using a deprecated Parity library for this. We should move to a
     // better alternative when one appears, possibly following Reth.
-    let rlp_transactions_root = ordered_trie_root::<KeccakHasher, _>(payload.transactions().iter());
+    let rlp_transactions_root = ordered_trie_root::<KeccakHasher, _>(
+        payload.transactions().iter().map(|txn_bytes| &**txn_bytes),
+    );
 
     // Calculate withdrawals root (post-Capella).
     let rlp_withdrawals_root = if let Ok(withdrawals) = payload.withdrawals() {
