@@ -1,7 +1,6 @@
 use super::{AggregateSignature, EthSpec, SignedRoot};
 use crate::slot_data::SlotData;
 use crate::{test_utils::TestRandom, BitVector, Hash256, Slot, SyncCommitteeMessage};
-use safe_arith::ArithError;
 use serde::{Deserialize, Serialize};
 use ssz_derive::{Decode, Encode};
 use test_random_derive::TestRandom;
@@ -12,7 +11,6 @@ pub enum Error {
     SszTypesError(ssz_types::Error),
     BitfieldError(ssz::BitfieldError),
     AlreadySigned(usize),
-    SubnetCountIsZero(ArithError),
 }
 
 /// An aggregation of `SyncCommitteeMessage`s, used in creating a `SignedContributionAndProof`.
