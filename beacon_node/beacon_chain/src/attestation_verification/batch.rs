@@ -138,27 +138,48 @@ where
     T: BeaconChainTypes,
     I: Iterator<Item = (&'a Attestation<T::EthSpec>, Option<SubnetId>)> + ExactSizeIterator,
 {
+    metrics::inc_counter_vec(
+        &metrics::ATTESTATION_BATCH_VERIFICATION_EVENTS_TOTAL,
+        &["started"],
+    );
     let mut num_partially_verified = 0;
     let mut num_failed = 0;
 
     // Perform partial verification of all attestations, collecting the results.
+    let timer_initial_verify = metrics::start_timer_vec(
+        &metrics::ATTESTATION_BATCH_VERIFICATION_SECONDS,
+        &["initial_verify"],
+    );
     let partial_results = attestations
         .map(|(attn, subnet_opt)| {
             let result = IndexedUnaggregatedAttestation::verify(attn, subnet_opt, chain);
             if result.is_ok() {
+                metrics::inc_counter_vec(
+                    &metrics::ATTESTATION_BATCH_VERIFICATION_EVENTS_TOTAL,
+                    &["initial_verify_ok"],
+                );
                 num_partially_verified += 1;
             } else {
+                metrics::inc_counter_vec(
+                    &metrics::ATTESTATION_BATCH_VERIFICATION_EVENTS_TOTAL,
+                    &["initial_verify_failed"],
+                );
                 num_failed += 1;
             }
             result
         })
         .collect::<Vec<_>>();
+    drop(timer_initial_verify);
 
     // May be set to `No` if batch verification succeeds.
     let mut check_signatures = CheckAttestationSignature::Yes;
 
     // Perform batch BLS verification, if any attestation signatures are worth checking.
     if num_partially_verified > 0 {
+        metrics::inc_counter_vec(
+            &metrics::ATTESTATION_BATCH_VERIFICATION_EVENTS_TOTAL,
+            &["signature_verifications"],
+        );
         let signature_setup_timer = metrics::start_timer(
             &metrics::ATTESTATION_PROCESSING_BATCH_UNAGG_SIGNATURE_SETUP_TIMES,
         );
@@ -200,6 +221,10 @@ where
     }
 
     // Complete the attestation verification, potentially verifying all signatures independently.
+    let timer_final_verify = metrics::start_timer_vec(
+        &metrics::ATTESTATION_BATCH_VERIFICATION_SECONDS,
+        &["final_verify"],
+    );
     let final_results = partial_results
         .into_iter()
         .map(|result| match result {
@@ -209,6 +234,7 @@ where
             Err(e) => Err(e),
         })
         .collect();
+    drop(timer_final_verify);
 
     Ok(final_results)
 }

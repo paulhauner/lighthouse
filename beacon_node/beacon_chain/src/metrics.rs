@@ -1933,6 +1933,26 @@ pub static LIGHT_CLIENT_SERVER_CACHE_PROCESSING_SUCCESSES: LazyLock<Result<IntCo
         )
     });
 
+/*
+ * Batch Attestation Investigation
+ */
+pub static ATTESTATION_BATCH_VERIFICATION_EVENTS_TOTAL: LazyLock<Result<IntCounterVec>> =
+    LazyLock::new(|| {
+        try_create_int_counter_vec(
+            "attestation_batch_verification_events_total",
+            "Counts of gossipsub attestation batch verification events",
+            &["type"],
+        )
+    });
+pub static ATTESTATION_BATCH_VERIFICATION_SECONDS: LazyLock<Result<HistogramVec>> =
+    LazyLock::new(|| {
+        try_create_histogram_vec(
+            "attestation_batch_verification_seconds",
+            "Duration for attestation batch processing",
+            &["type"],
+        )
+    });
+
 /// Scrape the `beacon_chain` for metrics that are not constantly updated (e.g., the present slot,
 /// head state info, etc) and update the Prometheus `DEFAULT_REGISTRY`.
 pub fn scrape_for_metrics<T: BeaconChainTypes>(beacon_chain: &BeaconChain<T>) {
