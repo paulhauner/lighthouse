@@ -936,10 +936,19 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
     ) -> Result<Self, AttestationSlashInfo<'a, T, Error>> {
         use AttestationSlashInfo::*;
 
+        let timer_early = metrics::start_timer_vec(
+            &metrics::ATTESTATION_BATCH_VERIFICATION_SECONDS,
+            &["verify_early_checks"],
+        );
         if let Err(e) = Self::verify_early_checks(attestation, chain) {
             return Err(SignatureNotChecked(attestation, e));
         }
+        drop(timer_early);
 
+        let timer_index_attestation = metrics::start_timer_vec(
+            &metrics::ATTESTATION_BATCH_VERIFICATION_SECONDS,
+            &["index_attestation"],
+        );
         let (indexed_attestation, committees_per_slot) =
             match obtain_indexed_attestation_and_committees_per_slot(chain, attestation) {
                 Ok(x) => x,
@@ -947,7 +956,12 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
                     return Err(SignatureNotChecked(attestation, e));
                 }
             };
+        drop(timer_index_attestation);
 
+        let timer_verify_middle_checks = metrics::start_timer_vec(
+            &metrics::ATTESTATION_BATCH_VERIFICATION_SECONDS,
+            &["index_attestation"],
+        );
         let (validator_index, expected_subnet_id) = match Self::verify_middle_checks(
             attestation,
             &indexed_attestation,
@@ -958,6 +972,7 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
             Ok(t) => t,
             Err(e) => return Err(SignatureNotCheckedIndexed(indexed_attestation, e)),
         };
+        drop(timer_verify_middle_checks);
 
         Ok(Self {
             attestation,
