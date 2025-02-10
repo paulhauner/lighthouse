@@ -619,6 +619,34 @@ pub static SAMPLING_REQUEST_RESULT: LazyLock<Result<IntCounterVec>> = LazyLock::
     )
 });
 
+/*
+ * Batch Attestation Investigation
+ */
+pub static ATTESTATION_BATCH_EVENTS_TOTAL: LazyLock<Result<IntCounterVec>> = LazyLock::new(|| {
+    try_create_int_counter_vec(
+        "attestation_batch_events_total",
+        "Counts of gossipsub attestation batch events",
+        &["type"],
+    )
+});
+pub static ATTESTATION_BATCH_SIZE: LazyLock<Result<Histogram>> = LazyLock::new(|| {
+    try_create_histogram_with_buckets(
+        "attestation_batch_size",
+        "Number of attestations in a batch",
+        Ok(vec![
+            1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 24.0, 28.0, 32.0, 36.0, 40.0, 44.0, 48.0, 52.0, 56.0,
+            60.0, 64.0, 128.0,
+        ]),
+    )
+});
+pub static ATTESTATION_BATCH_SECONDS: LazyLock<Result<HistogramVec>> = LazyLock::new(|| {
+    try_create_histogram_vec(
+        "attestation_batch_seconds",
+        "Duration for attestation batch processing",
+        &["type"],
+    )
+});
+
 pub fn register_finality_update_error(error: &LightClientFinalityUpdateError) {
     inc_counter_vec(&GOSSIP_FINALITY_UPDATE_ERRORS_PER_TYPE, &[error.as_ref()]);
 }

@@ -240,16 +240,26 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
         packages: GossipAttestationBatch<T::EthSpec>,
         reprocess_tx: Option<mpsc::Sender<ReprocessQueueMessage>>,
     ) {
+        let timer_total = metrics::start_timer_vec(&metrics::ATTESTATION_BATCH_SECONDS, &["total"]);
+        metrics::observe(&metrics::ATTESTATION_BATCH_SIZE, packages.len() as f64);
+        metrics::inc_counter_vec(&metrics::ATTESTATION_BATCH_EVENTS_TOTAL, &["started"]);
+
         let attestations_and_subnets = packages
             .iter()
             .map(|package| (package.attestation.as_ref(), Some(package.subnet_id)));
 
+        let timer_batch_verify =
+            metrics::start_timer_vec(&metrics::ATTESTATION_BATCH_SECONDS, &["batch_verify"]);
         let results = match self
             .chain
             .batch_verify_unaggregated_attestations_for_gossip(attestations_and_subnets)
         {
             Ok(results) => results,
             Err(e) => {
+                metrics::inc_counter_vec(
+                    &metrics::ATTESTATION_BATCH_EVENTS_TOTAL,
+                    &["total_batch_failure"],
+                );
                 error!(
                     self.log,
                     "Batch unagg. attn verification failed";
@@ -258,6 +268,7 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
                 return;
             }
         };
+        drop(timer_batch_verify);
 
         // Sanity check.
         if results.len() != packages.len() {
@@ -271,6 +282,8 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
             )
         }
 
+        let timer_map_into_indexed =
+            metrics::start_timer_vec(&metrics::ATTESTATION_BATCH_SECONDS, &["map_into_indexed"]);
         // Map the results into a new `Vec` so that `results` no longer holds a reference to
         // `packages`.
         #[allow(clippy::needless_collect)] // The clippy suggestion fails the borrow checker.
@@ -278,6 +291,7 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
             .into_iter()
             .map(|result| result.map(|verified| verified.into_indexed_attestation()))
             .collect::<Vec<_>>();
+        drop(timer_map_into_indexed);
 
         for (result, package) in results.into_iter().zip(packages.into_iter()) {
             let result = match result {
@@ -291,6 +305,16 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
                 }),
             };
 
+            if result.is_ok() {
+                metrics::inc_counter_vec(&metrics::ATTESTATION_BATCH_EVENTS_TOTAL, &["verified"]);
+            } else {
+                metrics::inc_counter_vec(&metrics::ATTESTATION_BATCH_EVENTS_TOTAL, &["rejected"]);
+            }
+
+            let timer_process_result = metrics::start_timer_vec(
+                &metrics::ATTESTATION_BATCH_SECONDS,
+                &["process_gossip_attestation_result"],
+            );
             self.process_gossip_attestation_result(
                 result,
                 package.message_id,
@@ -300,7 +324,9 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
                 package.should_import,
                 package.seen_timestamp,
             );
+            drop(timer_process_result);
         }
+        drop(timer_total);
     }
 
     // Clippy warning is is ignored since the arguments are all of a different type (i.e., they
