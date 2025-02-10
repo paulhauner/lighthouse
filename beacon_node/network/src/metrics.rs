@@ -640,9 +640,12 @@ pub static ATTESTATION_BATCH_SIZE: LazyLock<Result<Histogram>> = LazyLock::new(|
     )
 });
 pub static ATTESTATION_BATCH_SECONDS: LazyLock<Result<HistogramVec>> = LazyLock::new(|| {
-    try_create_histogram_vec(
+    try_create_histogram_vec_with_buckets(
         "attestation_batch_seconds",
         "Duration for attestation batch processing",
+        Ok(vec![
+            0.0001, 0.001, 0.002, 0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512, 1.024,
+        ]),
         &["type"],
     )
 });
