@@ -57,6 +57,7 @@ use state_processing::{
     },
 };
 use std::borrow::Cow;
+use std::collections::HashMap;
 use strum::AsRefStr;
 use tree_hash::TreeHash;
 use types::{
@@ -273,6 +274,24 @@ pub enum Error {
     /// We were unable to process this attestation due to an internal error. It's unclear if the
     /// attestation is valid.
     BeaconChainError(BeaconChainError),
+}
+
+/// Provides caching for attestation verification.
+///
+/// Only use this cache when processing multiple attestations in a short amount
+/// of time. Values are likely to go stale over time (e.g. the head block).
+pub struct AttestationVerificationContext {
+    head_block: HashMap<Hash256, Option<ProtoBlock>>,
+}
+
+impl Default for AttestationVerificationContext {
+    /// Create an empty verification context that will accumulate cached values
+    /// when used.
+    fn default() -> Self {
+        AttestationVerificationContext {
+            head_block: <_>::default(),
+        }
+    }
 }
 
 impl From<BeaconChainError> for Error {
@@ -492,6 +511,9 @@ impl<'a, T: BeaconChainTypes> IndexedAggregatedAttestation<'a, T> {
     ) -> Result<Hash256, Error> {
         let attestation = signed_aggregate.message().aggregate();
 
+        // Caching across multiple aggregates is not implemented.
+        let mut context = AttestationVerificationContext::default();
+
         // Ensure attestation is within the last ATTESTATION_PROPAGATION_SLOT_RANGE slots (within a
         // MAXIMUM_GOSSIP_CLOCK_DISPARITY allowance).
         //
@@ -563,7 +585,7 @@ impl<'a, T: BeaconChainTypes> IndexedAggregatedAttestation<'a, T> {
         //
         // Attestations must be for a known block. If the block is unknown, we simply drop the
         // attestation and do not delay consideration for later.
-        let head_block = verify_head_block_is_known(chain, attestation, None)?;
+        let head_block = verify_head_block_is_known(chain, attestation, None, &mut context)?;
 
         // Check the attestation target root is consistent with the head root.
         //
@@ -572,7 +594,7 @@ impl<'a, T: BeaconChainTypes> IndexedAggregatedAttestation<'a, T> {
         //
         // Whilst this attestation *technically* could be used to add value to a block, it is
         // invalid in the spirit of the protocol. Here we choose safety over profit.
-        verify_attestation_target_root::<T::EthSpec>(&head_block, attestation)?;
+        verify_attestation_target_root::<T::EthSpec>(head_block, attestation)?;
 
         // Ensure that the attestation has participants.
         if attestation.is_aggregation_bits_zero() {
@@ -817,6 +839,7 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
     pub fn verify_early_checks(
         attestation: AttestationRef<T::EthSpec>,
         chain: &BeaconChain<T>,
+        context: &mut AttestationVerificationContext,
     ) -> Result<(), Error> {
         let attestation_epoch = attestation.data().slot.epoch(T::EthSpec::slots_per_epoch());
 
@@ -852,11 +875,15 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
         // attestation and do not delay consideration for later.
         //
         // Enforce a maximum skip distance for unaggregated attestations.
-        let head_block =
-            verify_head_block_is_known(chain, attestation, chain.config.import_max_skip_slots)?;
+        let head_block = verify_head_block_is_known(
+            chain,
+            attestation,
+            chain.config.import_max_skip_slots,
+            context,
+        )?;
 
         // Check the attestation target root is consistent with the head root.
-        verify_attestation_target_root::<T::EthSpec>(&head_block, attestation)?;
+        verify_attestation_target_root::<T::EthSpec>(head_block, attestation)?;
 
         Ok(())
     }
@@ -918,8 +945,9 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
         attestation: &'a Attestation<T::EthSpec>,
         subnet_id: Option<SubnetId>,
         chain: &BeaconChain<T>,
+        context: &mut AttestationVerificationContext,
     ) -> Result<Self, Error> {
-        Self::verify_slashable(attestation.to_ref(), subnet_id, chain)
+        Self::verify_slashable(attestation.to_ref(), subnet_id, chain, context)
             .inspect(|verified_unaggregated| {
                 if let Some(slasher) = chain.slasher.as_ref() {
                     slasher.accept_attestation(verified_unaggregated.indexed_attestation.clone());
@@ -933,6 +961,7 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
         attestation: AttestationRef<'a, T::EthSpec>,
         subnet_id: Option<SubnetId>,
         chain: &BeaconChain<T>,
+        context: &mut AttestationVerificationContext,
     ) -> Result<Self, AttestationSlashInfo<'a, T, Error>> {
         use AttestationSlashInfo::*;
 
@@ -940,7 +969,7 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
             &metrics::ATTESTATION_BATCH_VERIFICATION_SECONDS,
             &["verify_early_checks"],
         );
-        if let Err(e) = Self::verify_early_checks(attestation, chain) {
+        if let Err(e) = Self::verify_early_checks(attestation, chain, context) {
             return Err(SignatureNotChecked(attestation, e));
         }
         drop(timer_early);
@@ -1023,9 +1052,14 @@ impl<'a, T: BeaconChainTypes> VerifiedUnaggregatedAttestation<'a, T> {
         unaggregated_attestation: &'a Attestation<T::EthSpec>,
         subnet_id: Option<SubnetId>,
         chain: &BeaconChain<T>,
+        context: &mut AttestationVerificationContext,
     ) -> Result<Self, Error> {
-        let indexed =
-            IndexedUnaggregatedAttestation::verify(unaggregated_attestation, subnet_id, chain)?;
+        let indexed = IndexedUnaggregatedAttestation::verify(
+            unaggregated_attestation,
+            subnet_id,
+            chain,
+            context,
+        )?;
         Self::from_indexed(indexed, chain, CheckAttestationSignature::Yes)
     }
 
@@ -1117,19 +1151,25 @@ impl<'a, T: BeaconChainTypes> VerifiedUnaggregatedAttestation<'a, T> {
 /// Case (1) is the exact thing we're trying to detect. However case (2) is a little different, but
 /// it's still fine to reject here because there's no need for us to handle attestations that are
 /// already finalized.
-fn verify_head_block_is_known<T: BeaconChainTypes>(
+fn verify_head_block_is_known<'a, T: BeaconChainTypes>(
     chain: &BeaconChain<T>,
     attestation: AttestationRef<T::EthSpec>,
     max_skip_slots: Option<u64>,
-) -> Result<ProtoBlock, Error> {
-    let block_opt = chain
-        .canonical_head
-        .fork_choice_read_lock()
-        .get_block(&attestation.data().beacon_block_root)
-        .or_else(|| {
+    context: &'a mut AttestationVerificationContext,
+) -> Result<&'a ProtoBlock, Error> {
+    let block_opt = context
+        .head_block
+        .entry(attestation.data().beacon_block_root)
+        .or_insert_with(|| {
             chain
-                .early_attester_cache
-                .get_proto_block(attestation.data().beacon_block_root)
+                .canonical_head
+                .fork_choice_read_lock()
+                .get_block(&attestation.data().beacon_block_root)
+                .or_else(|| {
+                    chain
+                        .early_attester_cache
+                        .get_proto_block(attestation.data().beacon_block_root)
+                })
         });
 
     if let Some(block) = block_opt {

@@ -10,8 +10,8 @@
 //! supplied as input. Each result provides the exact success or failure result of the corresponding
 //! attestation, with no loss of fidelity when compared to individual verification.
 use super::{
-    CheckAttestationSignature, Error, IndexedAggregatedAttestation, IndexedUnaggregatedAttestation,
-    VerifiedAggregatedAttestation, VerifiedUnaggregatedAttestation,
+    AttestationVerificationContext, CheckAttestationSignature, Error, IndexedAggregatedAttestation,
+    IndexedUnaggregatedAttestation, VerifiedAggregatedAttestation, VerifiedUnaggregatedAttestation,
 };
 use crate::{metrics, BeaconChain, BeaconChainError, BeaconChainTypes};
 use bls::verify_signature_sets;
@@ -150,9 +150,11 @@ where
         &metrics::ATTESTATION_BATCH_VERIFICATION_SECONDS,
         &["initial_verify"],
     );
+    let mut context = AttestationVerificationContext::default();
     let partial_results = attestations
         .map(|(attn, subnet_opt)| {
-            let result = IndexedUnaggregatedAttestation::verify(attn, subnet_opt, chain);
+            let result =
+                IndexedUnaggregatedAttestation::verify(attn, subnet_opt, chain, &mut context);
             if result.is_ok() {
                 metrics::inc_counter_vec(
                     &metrics::ATTESTATION_BATCH_VERIFICATION_EVENTS_TOTAL,

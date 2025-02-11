@@ -1,7 +1,7 @@
 use crate::attestation_verification::{
     batch_verify_aggregated_attestations, batch_verify_unaggregated_attestations,
-    Error as AttestationError, VerifiedAggregatedAttestation, VerifiedAttestation,
-    VerifiedUnaggregatedAttestation,
+    AttestationVerificationContext, Error as AttestationError, VerifiedAggregatedAttestation,
+    VerifiedAttestation, VerifiedUnaggregatedAttestation,
 };
 use crate::attester_cache::{AttesterCache, AttesterCacheKey};
 use crate::beacon_block_streamer::{BeaconBlockStreamer, CheckCaches};
@@ -2081,39 +2081,43 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
         let _timer =
             metrics::start_timer(&metrics::UNAGGREGATED_ATTESTATION_GOSSIP_VERIFICATION_TIMES);
 
-        VerifiedUnaggregatedAttestation::verify(unaggregated_attestation, subnet_id, self).inspect(
-            |v| {
-                // This method is called for API and gossip attestations, so this covers all unaggregated attestation events
-                if let Some(event_handler) = self.event_handler.as_ref() {
-                    if event_handler.has_single_attestation_subscribers() {
-                        let current_fork = self
-                            .spec
-                            .fork_name_at_slot::<T::EthSpec>(v.attestation().data().slot);
-                        if current_fork.electra_enabled() {
-                            // I don't see a situation where this could return None. The upstream unaggregated attestation checks
-                            // should have already verified that this is an attestation with a single committee bit set.
-                            if let Some(single_attestation) = v.single_attestation() {
-                                event_handler.register(EventKind::SingleAttestation(Box::new(
-                                    single_attestation,
-                                )));
-                            }
-                        }
-                    }
-
-                    if event_handler.has_attestation_subscribers() {
-                        let current_fork = self
-                            .spec
-                            .fork_name_at_slot::<T::EthSpec>(v.attestation().data().slot);
-                        if !current_fork.electra_enabled() {
-                            event_handler.register(EventKind::Attestation(Box::new(
-                                v.attestation().clone_as_attestation(),
+        VerifiedUnaggregatedAttestation::verify(
+            unaggregated_attestation,
+            subnet_id,
+            self,
+            &mut AttestationVerificationContext::default(),
+        )
+        .inspect(|v| {
+            // This method is called for API and gossip attestations, so this covers all unaggregated attestation events
+            if let Some(event_handler) = self.event_handler.as_ref() {
+                if event_handler.has_single_attestation_subscribers() {
+                    let current_fork = self
+                        .spec
+                        .fork_name_at_slot::<T::EthSpec>(v.attestation().data().slot);
+                    if current_fork.electra_enabled() {
+                        // I don't see a situation where this could return None. The upstream unaggregated attestation checks
+                        // should have already verified that this is an attestation with a single committee bit set.
+                        if let Some(single_attestation) = v.single_attestation() {
+                            event_handler.register(EventKind::SingleAttestation(Box::new(
+                                single_attestation,
                             )));
                         }
                     }
                 }
-                metrics::inc_counter(&metrics::UNAGGREGATED_ATTESTATION_PROCESSING_SUCCESSES);
-            },
-        )
+
+                if event_handler.has_attestation_subscribers() {
+                    let current_fork = self
+                        .spec
+                        .fork_name_at_slot::<T::EthSpec>(v.attestation().data().slot);
+                    if !current_fork.electra_enabled() {
+                        event_handler.register(EventKind::Attestation(Box::new(
+                            v.attestation().clone_as_attestation(),
+                        )));
+                    }
+                }
+            }
+            metrics::inc_counter(&metrics::UNAGGREGATED_ATTESTATION_PROCESSING_SUCCESSES);
+        })
     }
 
     /// Performs the same validation as `Self::verify_aggregated_attestation_for_gossip`, but for
