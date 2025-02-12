@@ -37,9 +37,10 @@ where
     let mut num_failed = 0;
 
     // Perform indexing of all attestations, collecting the results.
+    let mut context = AttestationVerificationContext::default();
     let indexing_results = aggregates
         .map(|aggregate| {
-            let result = IndexedAggregatedAttestation::verify(aggregate, chain);
+            let result = IndexedAggregatedAttestation::verify(aggregate, chain, &mut context);
             if result.is_ok() {
                 num_indexed += 1;
             } else {
@@ -118,7 +119,13 @@ where
         .into_iter()
         .map(|result| match result {
             Ok(indexed) => {
-                VerifiedAggregatedAttestation::from_indexed(indexed, chain, check_signatures)
+                // TODO(paul): is it safe to resuse the context here?
+                VerifiedAggregatedAttestation::from_indexed(
+                    indexed,
+                    chain,
+                    check_signatures,
+                    &mut context,
+                )
             }
             Err(e) => Err(e),
         })
@@ -231,7 +238,13 @@ where
         .into_iter()
         .map(|result| match result {
             Ok(partial) => {
-                VerifiedUnaggregatedAttestation::from_indexed(partial, chain, check_signatures)
+                // TODO(paul): is it safe to reuse the context here?
+                VerifiedUnaggregatedAttestation::from_indexed(
+                    partial,
+                    chain,
+                    check_signatures,
+                    &mut context,
+                )
             }
             Err(e) => Err(e),
         })

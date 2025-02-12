@@ -186,30 +186,31 @@ fn convert_to_attestation<'a, T: BeaconChainTypes>(
     match attestation {
         Either::Left(a) => Ok(Cow::Borrowed(a)),
         Either::Right(single_attestation) => {
-            let conversion_result = chain.with_committee_cache(
-                single_attestation.data.target.root,
-                single_attestation
-                    .data
-                    .slot
-                    .epoch(T::EthSpec::slots_per_epoch()),
-                |committee_cache, _| {
+            let conversion_result = chain
+                .attester_duties_committee_cache(
+                    single_attestation.data.target.root,
+                    single_attestation
+                        .data
+                        .slot
+                        .epoch(T::EthSpec::slots_per_epoch()),
+                )
+                .map(|(committee_cache, _)| {
                     let Some(committee) = committee_cache.get_beacon_committee(
                         single_attestation.data.slot,
                         single_attestation.committee_index,
                     ) else {
-                        return Ok(Err(AttestationError::NoCommitteeForSlotAndIndex {
+                        return Err(AttestationError::NoCommitteeForSlotAndIndex {
                             slot: single_attestation.data.slot,
                             index: single_attestation.committee_index,
-                        }));
+                        });
                     };
 
-                    Ok(single_attestation_to_attestation::<T::EthSpec>(
+                    single_attestation_to_attestation::<T::EthSpec>(
                         single_attestation,
                         committee.committee,
                     )
-                    .map(Cow::Owned))
-                },
-            );
+                    .map(Cow::Owned)
+                });
             match conversion_result {
                 Ok(Ok(attestation)) => Ok(attestation),
                 Ok(Err(e)) => Err(Error::Validation(e)),

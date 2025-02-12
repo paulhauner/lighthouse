@@ -1674,21 +1674,16 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
             .get_block_execution_status(&head_block_root)
             .ok_or(Error::AttestationHeadNotInForkChoice(head_block_root))?;
 
-        let (duties, dependent_root) = self.with_committee_cache(
-            head_block_root,
-            epoch,
-            |committee_cache, dependent_root| {
-                let duties = validator_indices
-                    .iter()
-                    .map(|validator_index| {
-                        let validator_index = *validator_index as usize;
-                        committee_cache.get_attestation_duties(validator_index)
-                    })
-                    .collect();
+        let (committee_cache, dependent_root) =
+            self.attester_duties_committee_cache(head_block_root, epoch)?;
+        let duties = validator_indices
+            .iter()
+            .map(|validator_index| {
+                let validator_index = *validator_index as usize;
+                committee_cache.get_attestation_duties(validator_index)
+            })
+            .collect();
 
-                Ok((duties, dependent_root))
-            },
-        )?;
         Ok((duties, dependent_root, execution_status))
     }
 
@@ -2143,7 +2138,8 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
         let _timer =
             metrics::start_timer(&metrics::AGGREGATED_ATTESTATION_GOSSIP_VERIFICATION_TIMES);
 
-        VerifiedAggregatedAttestation::verify(signed_aggregate, self).inspect(|v| {
+        let mut context = AttestationVerificationContext::default();
+        VerifiedAggregatedAttestation::verify(signed_aggregate, self, &mut context).inspect(|v| {
             // This method is called for API and gossip attestations, so this covers all aggregated attestation events
             if let Some(event_handler) = self.event_handler.as_ref() {
                 if event_handler.has_attestation_subscribers() {
@@ -6723,15 +6719,11 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
     ///
     /// If the committee for `(head_block_root, shuffling_epoch)` isn't found in the
     /// `shuffling_cache`, we will read a state from disk and then update the `shuffling_cache`.
-    pub fn with_committee_cache<F, R>(
+    pub fn attester_duties_committee_cache(
         &self,
         head_block_root: Hash256,
         shuffling_epoch: Epoch,
-        map_fn: F,
-    ) -> Result<R, Error>
-    where
-        F: Fn(&CommitteeCache, Hash256) -> Result<R, Error>,
-    {
+    ) -> Result<(Arc<CommitteeCache>, Hash256), Error> {
         let head_block = self
             .canonical_head
             .fork_choice_read_lock()
@@ -6763,7 +6755,7 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
             drop(shuffling_cache);
 
             let committee_cache = cache_item.wait()?;
-            map_fn(&committee_cache, shuffling_id.shuffling_decision_block)
+            Ok((committee_cache, shuffling_id.shuffling_decision_block))
         } else {
             // Create an entry in the cache that "promises" this value will eventually be computed.
             // This avoids the case where multiple threads attempt to produce the same value at the
@@ -6870,7 +6862,7 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
 
             sender.send(committee_cache.clone());
 
-            map_fn(&committee_cache, shuffling_decision_block)
+            Ok((committee_cache, shuffling_decision_block))
         }
     }
 

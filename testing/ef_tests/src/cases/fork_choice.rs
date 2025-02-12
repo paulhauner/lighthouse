@@ -599,6 +599,7 @@ impl<E: EthSpec> Tester<E> {
         let (indexed_attestation, _) = obtain_indexed_attestation_and_committees_per_slot(
             &self.harness.chain,
             attestation.to_ref(),
+            &mut <_>::default(),
         )
         .map_err(|e| Error::InternalError(format!("attestation indexing failed with {:?}", e)))?;
         let verified_attestation: ManuallyVerifiedAttestation<EphemeralHarnessType<E>> =

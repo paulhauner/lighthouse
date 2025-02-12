@@ -449,29 +449,28 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
         reprocess_tx: Option<mpsc::Sender<ReprocessQueueMessage>>,
         seen_timestamp: Duration,
     ) {
-        let conversion_result = self.chain.with_committee_cache(
-            single_attestation.data.target.root,
-            single_attestation
-                .data
-                .slot
-                .epoch(T::EthSpec::slots_per_epoch()),
-            |committee_cache, _| {
+        let conversion_result = self
+            .chain
+            .attester_duties_committee_cache(
+                single_attestation.data.target.root,
+                single_attestation
+                    .data
+                    .slot
+                    .epoch(T::EthSpec::slots_per_epoch()),
+            )
+            .map(|(committee_cache, _)| {
                 let slot = single_attestation.data.slot;
                 let committee_index = single_attestation.committee_index;
                 let Some(committee) = committee_cache.get_beacon_committee(slot, committee_index)
                 else {
-                    return Ok(Err(AttnError::NoCommitteeForSlotAndIndex {
+                    return Err(AttnError::NoCommitteeForSlotAndIndex {
                         slot,
                         index: committee_index,
-                    }));
+                    });
                 };
 
-                Ok(single_attestation_to_attestation(
-                    &single_attestation,
-                    committee.committee,
-                ))
-            },
-        );
+                single_attestation_to_attestation(&single_attestation, committee.committee)
+            });
 
         match conversion_result {
             Ok(Ok(attestation)) => {
