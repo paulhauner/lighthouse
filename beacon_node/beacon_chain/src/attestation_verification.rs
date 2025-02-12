@@ -1160,37 +1160,13 @@ fn verify_head_block_is_known<'a, T: BeaconChainTypes>(
     max_skip_slots: Option<u64>,
     context: &'a mut AttestationVerificationContext,
 ) -> Result<&'a AttestedBlock, Error> {
-    let block_opt = context
+    let block_opt = match context
         .head_blocks
         .entry(attestation.data().beacon_block_root)
-        .or_insert_with(|| {
-            // First check the head block.
-            let cached_head = chain.canonical_head.cached_head();
-            if cached_head.snapshot.beacon_block_root == attestation.data().beacon_block_root {
-                return Some(AttestedBlock {
-                    slot: cached_head.snapshot.beacon_block.slot(),
-                    root: cached_head.snapshot.beacon_block_root,
-                    target_root: cached_head.justified_checkpoint().root,
-                });
-            }
-
-            // Then check the early attester cache. If there's nothing there,
-            // try fork choice.
-            chain
-                .early_attester_cache
-                .get_proto_block(attestation.data().beacon_block_root)
-                .or_else(|| {
-                    chain
-                        .canonical_head
-                        .fork_choice_read_lock()
-                        .get_block(&attestation.data().beacon_block_root)
-                })
-                .map(|proto_block| AttestedBlock {
-                    slot: proto_block.slot,
-                    root: proto_block.root,
-                    target_root: proto_block.target_root,
-                })
-        });
+    {
+        Entry::Occupied(e) => e.into_mut(),
+        Entry::Vacant(e) => e.insert(get_attested_block(chain, attestation)?),
+    };
 
     if let Some(block) = block_opt {
         // Reject any block that exceeds our limit on skipped slots.
@@ -1219,6 +1195,61 @@ fn verify_head_block_is_known<'a, T: BeaconChainTypes>(
             beacon_block_root: attestation.data().beacon_block_root,
         })
     }
+}
+
+/// Returns the head block from the given `attestation`.
+fn get_attested_block<T: BeaconChainTypes>(
+    chain: &BeaconChain<T>,
+    attestation: AttestationRef<T::EthSpec>,
+) -> Result<Option<AttestedBlock>, Error> {
+    let cached_head = chain.canonical_head.cached_head();
+
+    //TODO(paul): add reasoning about why head blocks are descendants of the
+    //finalized/justified checkpoints.
+
+    // First check the head block.
+    let attested_block =
+        if cached_head.snapshot.beacon_block_root == attestation.data().beacon_block_root {
+            let block = &cached_head.snapshot.beacon_block;
+            let block_root = cached_head.snapshot.beacon_block_root;
+            let state = &cached_head.snapshot.beacon_state;
+
+            let target_slot = block
+                .slot()
+                .epoch(T::EthSpec::slots_per_epoch())
+                .start_slot(T::EthSpec::slots_per_epoch());
+            let target_root = if block.slot() == target_slot {
+                block_root
+            } else {
+                *state
+                    .get_block_root(target_slot)
+                    .map_err(|e| Error::BeaconChainError(e.into()))?
+            };
+            Some(AttestedBlock {
+                slot: block.slot(),
+                root: block_root,
+                target_root,
+            })
+        } else {
+            // Then check the early attester cache. If there's nothing there,
+            // try fork choice. Fork choice is the slowest option.
+            chain
+                .early_attester_cache
+                .get_proto_block(attestation.data().beacon_block_root)
+                .or_else(|| {
+                    chain
+                        .canonical_head
+                        .fork_choice_read_lock()
+                        .get_block(&attestation.data().beacon_block_root)
+                })
+                .map(|proto_block| AttestedBlock {
+                    slot: proto_block.slot,
+                    root: proto_block.root,
+                    target_root: proto_block.target_root,
+                })
+        };
+
+    Ok(attested_block)
 }
 
 /// Verify that the `attestation` is within the acceptable gossip propagation range, with reference
