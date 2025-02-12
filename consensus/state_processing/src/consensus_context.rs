@@ -160,8 +160,10 @@ impl<E: EthSpec> ConsensusContext<E> {
                 Entry::Occupied(occupied) => Ok(occupied.into_mut()),
                 Entry::Vacant(vacant) => {
                     let committee = state.get_beacon_committee(attn.data.slot, attn.data.index)?;
-                    let indexed_attestation =
-                        attesting_indices_base::get_indexed_attestation(committee.committee, attn)?;
+                    let indexed_attestation = attesting_indices_base::get_indexed_attestation(
+                        committee.unsorted_committee(),
+                        attn,
+                    )?;
                     Ok(vacant.insert(indexed_attestation))
                 }
             },

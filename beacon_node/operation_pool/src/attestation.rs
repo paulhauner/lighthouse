@@ -46,7 +46,8 @@ impl<'a, E: EthSpec> AttMaxCover<'a, E> {
         let committee = state
             .get_beacon_committee(att.data.slot, att.data.index)
             .ok()?;
-        let indices = get_attesting_indices::<E>(committee.committee, &fresh_validators).ok()?;
+        let indices =
+            get_attesting_indices::<E>(committee.unsorted_committee(), &fresh_validators).ok()?;
         let sqrt_total_active_balance = base::SqrtTotalActiveBalance::new(total_active_balance);
         let fresh_validators_rewards: HashMap<u64, u64> = indices
             .iter()

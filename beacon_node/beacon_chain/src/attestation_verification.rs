@@ -41,7 +41,6 @@ use crate::{
     BeaconChain, BeaconChainError, BeaconChainTypes,
 };
 use bls::verify_signature_sets;
-use itertools::Itertools;
 use slog::debug;
 use slot_clock::SlotClock;
 use state_processing::{
@@ -63,7 +62,7 @@ use tree_hash::TreeHash;
 use types::{
     Attestation, AttestationData, AttestationRef, BeaconStateError::NoCommitteeFound, ChainSpec,
     CommitteeCache, CommitteeIndex, Epoch, EthSpec, Hash256, IndexedAttestation, SelectionProof,
-    SignedAggregateAndProof, SingleAttestation, Slot, SubnetId,
+    SignedAggregateAndProof, SingleAttestation, Slot, SortedBeaconCommittee, SubnetId,
 };
 
 pub use batch::{batch_verify_aggregated_attestations, batch_verify_unaggregated_attestations};
@@ -289,7 +288,7 @@ pub struct AttestedBlock {
 #[derive(Default)]
 pub struct AttestationVerificationContext {
     head_blocks: HashMap<Hash256, Option<AttestedBlock>>,
-    committee_caches: HashMap<(Hash256, Epoch), Arc<CommitteeCache>>,
+    sorted_committees: HashMap<(Hash256, Epoch, u64), (SortedBeaconCommittee, u64)>,
 }
 
 impl From<BeaconChainError> for Error {
@@ -626,7 +625,7 @@ impl<'a, T: BeaconChainTypes> IndexedAggregatedAttestation<'a, T> {
 
         // Committees must be sorted by ascending index order 0..committees_per_slot
         let mut get_indexed_attestation_with_committee = |attestation| {
-            let committee_cache = attestation_committee_cache(chain, attestation, context)?;
+            let committee_cache = attestation_committee_cache(chain, attestation)?;
             let committees = committee_cache
                 .get_beacon_committees_at_slot(attestation.data().slot)
                 .map_err(|_| Error::NoCommitteeForSlotAndIndex {
@@ -676,8 +675,9 @@ impl<'a, T: BeaconChainTypes> IndexedAggregatedAttestation<'a, T> {
             // less then MaxValidatorsPerCommittee
             match signed_aggregate {
                 SignedAggregateAndProof::Base(signed_aggregate) => {
+                    let (committee, _) = sorted_attestation_committee(chain, attestation, context)?;
                     attesting_indices_base::get_indexed_attestation(
-                        committee.committee,
+                        committee.sorted_committee(),
                         &signed_aggregate.message.aggregate,
                     )
                     .map_err(|e| BeaconChainError::from(e).into())
@@ -1477,38 +1477,23 @@ pub fn obtain_indexed_attestation_and_committees_per_slot<T: BeaconChainTypes>(
     attestation: AttestationRef<T::EthSpec>,
     context: &mut AttestationVerificationContext,
 ) -> Result<(IndexedAttestation<T::EthSpec>, CommitteesPerSlot), Error> {
-    let committee_cache = attestation_committee_cache(chain, attestation, context)?;
-    let committees_per_slot = committee_cache.committees_per_slot();
-    let committees = committee_cache
-        .get_beacon_committees_at_slot(attestation.data().slot)
-        .map_err(|_| Error::NoCommitteeForSlotAndIndex {
-            slot: attestation.data().slot,
-            index: attestation.committee_index().unwrap_or(0),
-        })?;
-
     match attestation {
         AttestationRef::Base(att) => {
-            let committee = committees
-                .iter()
-                .filter(|&committee| committee.index == att.data.index)
-                .at_most_one()
-                .map_err(|_| Error::NoCommitteeForSlotAndIndex {
-                    slot: att.data.slot,
-                    index: att.data.index,
-                })?;
-
-            if let Some(committee) = committee {
-                attesting_indices_base::get_indexed_attestation(committee.committee, att)
-                    .map(|attestation| (attestation, committees_per_slot))
-                    .map_err(Error::Invalid)
-            } else {
-                Err(Error::NoCommitteeForSlotAndIndex {
-                    slot: att.data.slot,
-                    index: att.data.index,
-                })
-            }
+            let (committee, committees_per_slot) =
+                sorted_attestation_committee(chain, attestation, context)?;
+            attesting_indices_base::get_indexed_attestation(committee.sorted_committee(), att)
+                .map(|attestation| (attestation, *committees_per_slot))
+                .map_err(Error::Invalid)
         }
         AttestationRef::Electra(att) => {
+            let committee_cache = attestation_committee_cache(chain, attestation)?;
+            let committees_per_slot = committee_cache.committees_per_slot();
+            let committees = committee_cache
+                .get_beacon_committees_at_slot(attestation.data().slot)
+                .map_err(|_| Error::NoCommitteeForSlotAndIndex {
+                    slot: attestation.data().slot,
+                    index: attestation.committee_index().unwrap_or(0),
+                })?;
             attesting_indices_electra::get_indexed_attestation(&committees, att)
                 .map(|attestation| (attestation, committees_per_slot))
                 .map_err(|e| {
@@ -1525,6 +1510,34 @@ pub fn obtain_indexed_attestation_and_committees_per_slot<T: BeaconChainTypes>(
     }
 }
 
+fn sorted_attestation_committee<'a, T: BeaconChainTypes>(
+    chain: &BeaconChain<T>,
+    attestation: AttestationRef<T::EthSpec>,
+    context: &'a mut AttestationVerificationContext,
+) -> Result<&'a (SortedBeaconCommittee, CommitteeIndex), Error> {
+    let attestation_slot = attestation.data().slot;
+    let attestation_epoch = attestation_slot.epoch(T::EthSpec::slots_per_epoch());
+    let target = &attestation.data().target;
+    let committee_index = attestation.committee_index().unwrap_or(0);
+    let cache_key = (target.root, attestation_epoch, committee_index);
+
+    match context.sorted_committees.entry(cache_key) {
+        Entry::Occupied(e) => Ok(e.into_mut()),
+        Entry::Vacant(e) => {
+            let committee_cache = attestation_committee_cache(chain, attestation)?;
+            let committees_per_slot = committee_cache.committees_per_slot();
+            let committee = committee_cache
+                .get_beacon_committee(attestation.data().slot, committee_index)
+                .ok_or_else(|| Error::NoCommitteeForSlotAndIndex {
+                    slot: attestation.data().slot,
+                    index: committee_index,
+                })?;
+
+            Ok(e.insert((committee.into(), committees_per_slot)))
+        }
+    }
+}
+
 /// Runs the `map_fn` with the committee and committee count per slot for the given `attestation`.
 ///
 /// This function exists in this odd "map" pattern because efficiently obtaining the committees for
@@ -1536,11 +1549,10 @@ pub fn obtain_indexed_attestation_and_committees_per_slot<T: BeaconChainTypes>(
 /// from disk and then update the `shuffling_cache`.
 ///
 /// Committees are sorted by ascending index order 0..committees_per_slot
-fn attestation_committee_cache<'a, T: BeaconChainTypes>(
+fn attestation_committee_cache<T: BeaconChainTypes>(
     chain: &BeaconChain<T>,
     attestation: AttestationRef<T::EthSpec>,
-    context: &'a mut AttestationVerificationContext,
-) -> Result<&'a CommitteeCache, Error> {
+) -> Result<Arc<CommitteeCache>, Error> {
     let attestation_epoch = attestation.data().slot.epoch(T::EthSpec::slots_per_epoch());
     let target = &attestation.data().target;
 
@@ -1560,15 +1572,9 @@ fn attestation_committee_cache<'a, T: BeaconChainTypes>(
         return Err(Error::UnknownTargetRoot(target.root));
     }
 
-    let cache_key = (target.root, attestation_epoch);
-
-    match context.committee_caches.entry(cache_key) {
-        Entry::Occupied(e) => Ok(e.into_mut()),
-        Entry::Vacant(e) => {
-            let (committee_cache, _) = chain
-                .attester_duties_committee_cache(target.root, attestation_epoch)
-                .map_err(BeaconChainError::from)?;
-            Ok(e.insert(committee_cache))
-        }
-    }
+    chain
+        .attester_duties_committee_cache(target.root, attestation_epoch)
+        .map(|(committee_cache, _)| committee_cache)
+        .map_err(BeaconChainError::from)
+        .map_err(Into::into)
 }
