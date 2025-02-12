@@ -42,7 +42,6 @@ use crate::{
 };
 use bls::verify_signature_sets;
 use itertools::Itertools;
-use proto_array::Block as ProtoBlock;
 use slog::debug;
 use slot_clock::SlotClock;
 use state_processing::{
@@ -277,13 +276,19 @@ pub enum Error {
     BeaconChainError(BeaconChainError),
 }
 
+pub struct AttestedBlock {
+    slot: Slot,
+    root: Hash256,
+    target_root: Hash256,
+}
+
 /// Provides caching for attestation verification.
 ///
 /// Only use this cache when processing multiple attestations in a short amount
 /// of time. Values are likely to go stale over time (e.g. the head block).
 #[derive(Default)]
 pub struct AttestationVerificationContext {
-    head_blocks: HashMap<Hash256, Option<ProtoBlock>>,
+    head_blocks: HashMap<Hash256, Option<AttestedBlock>>,
     committee_caches: HashMap<(Hash256, Epoch), Arc<CommitteeCache>>,
 }
 
@@ -1154,19 +1159,36 @@ fn verify_head_block_is_known<'a, T: BeaconChainTypes>(
     attestation: AttestationRef<T::EthSpec>,
     max_skip_slots: Option<u64>,
     context: &'a mut AttestationVerificationContext,
-) -> Result<&'a ProtoBlock, Error> {
+) -> Result<&'a AttestedBlock, Error> {
     let block_opt = context
         .head_blocks
         .entry(attestation.data().beacon_block_root)
         .or_insert_with(|| {
+            // First check the head block.
+            let cached_head = chain.canonical_head.cached_head();
+            if cached_head.snapshot.beacon_block_root == attestation.data().beacon_block_root {
+                return Some(AttestedBlock {
+                    slot: cached_head.snapshot.beacon_block.slot(),
+                    root: cached_head.snapshot.beacon_block_root,
+                    target_root: cached_head.justified_checkpoint().root,
+                });
+            }
+
+            // Then check the early attester cache. If there's nothing there,
+            // try fork choice.
             chain
-                .canonical_head
-                .fork_choice_read_lock()
-                .get_block(&attestation.data().beacon_block_root)
+                .early_attester_cache
+                .get_proto_block(attestation.data().beacon_block_root)
                 .or_else(|| {
                     chain
-                        .early_attester_cache
-                        .get_proto_block(attestation.data().beacon_block_root)
+                        .canonical_head
+                        .fork_choice_read_lock()
+                        .get_block(&attestation.data().beacon_block_root)
+                })
+                .map(|proto_block| AttestedBlock {
+                    slot: proto_block.slot,
+                    root: proto_block.root,
+                    target_root: proto_block.target_root,
                 })
         });
 
@@ -1285,7 +1307,7 @@ pub fn verify_attestation_signature<T: BeaconChainTypes>(
 /// Verifies that the `attestation.data.target.root` is indeed the target root of the block at
 /// `attestation.data.beacon_block_root`.
 pub fn verify_attestation_target_root<E: EthSpec>(
-    head_block: &ProtoBlock,
+    head_block: &AttestedBlock,
     attestation: AttestationRef<E>,
 ) -> Result<(), Error> {
     // Check the attestation target root.
