@@ -989,7 +989,7 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
 
         let timer_verify_middle_checks = metrics::start_timer_vec(
             &metrics::ATTESTATION_BATCH_VERIFICATION_SECONDS,
-            &["index_attestation"],
+            &["verify_middle_checks"],
         );
         let (validator_index, expected_subnet_id) = match Self::verify_middle_checks(
             attestation,
