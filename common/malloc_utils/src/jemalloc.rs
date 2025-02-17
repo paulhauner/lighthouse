@@ -7,9 +7,11 @@
 //!
 //! A) `JEMALLOC_SYS_WITH_MALLOC_CONF` at compile-time.
 //! B) `_RJEM_MALLOC_CONF` at runtime.
-use metrics::{set_gauge, try_create_int_gauge, IntGauge};
+use metrics::{
+    set_gauge, set_gauge_vec, try_create_int_gauge, try_create_int_gauge_vec, IntGauge, IntGaugeVec,
+};
 use std::sync::LazyLock;
-use tikv_jemalloc_ctl::{arenas, epoch, stats, Access, AsName, Error};
+use tikv_jemalloc_ctl::{arenas, epoch, raw, stats, Access, AsName, Error};
 
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
@@ -33,6 +35,20 @@ pub static BYTES_RESIDENT: LazyLock<metrics::Result<IntGauge>> = LazyLock::new(|
 pub static BYTES_RETAINED: LazyLock<metrics::Result<IntGauge>> = LazyLock::new(|| {
     try_create_int_gauge("jemalloc_bytes_retained", "Equivalent to stats.retained")
 });
+pub static NUM_ALLOCATIONS: LazyLock<metrics::Result<IntGaugeVec>> = LazyLock::new(|| {
+    try_create_int_gauge_vec(
+        "jemalloc_num_allocations",
+        "Equivalent to stats.nmalloc",
+        &["arena"],
+    )
+});
+pub static NUM_DEALLOCATIONS: LazyLock<metrics::Result<IntGaugeVec>> = LazyLock::new(|| {
+    try_create_int_gauge_vec(
+        "jemalloc_num_deallocations",
+        "Equivalent to stats.ndalloc",
+        &["arena"],
+    )
+});
 
 pub fn scrape_jemalloc_metrics() {
     scrape_jemalloc_metrics_fallible().unwrap()
@@ -42,13 +58,36 @@ pub fn scrape_jemalloc_metrics_fallible() -> Result<(), Error> {
     // Advance the epoch so that the underlying statistics are updated.
     epoch::advance()?;
 
-    set_gauge(&NUM_ARENAS, arenas::narenas::read()? as i64);
+    let num_arenas = arenas::narenas::read()?;
+    set_gauge(&NUM_ARENAS, num_arenas as i64);
     set_gauge(&BYTES_ALLOCATED, stats::allocated::read()? as i64);
     set_gauge(&BYTES_ACTIVE, stats::active::read()? as i64);
     set_gauge(&BYTES_MAPPED, stats::mapped::read()? as i64);
     set_gauge(&BYTES_METADATA, stats::metadata::read()? as i64);
     set_gauge(&BYTES_RESIDENT, stats::resident::read()? as i64);
     set_gauge(&BYTES_RETAINED, stats::retained::read()? as i64);
+
+    for arena in 0..num_arenas {
+        unsafe {
+            let nmalloc_req = format!("stats.arenas.{arena}.small.nmalloc\0");
+            if let Ok(nmalloc) = raw::read::<usize>(nmalloc_req.as_bytes()) {
+                set_gauge_vec(
+                    &NUM_ALLOCATIONS,
+                    &[&format!("arena_{arena}")],
+                    nmalloc as i64,
+                );
+            }
+
+            let ndalloc_req = format!("stats.arenas.{arena}.small.ndalloc\0");
+            if let Ok(ndalloc) = raw::read::<usize>(ndalloc_req.as_bytes()) {
+                set_gauge_vec(
+                    &NUM_DEALLOCATIONS,
+                    &[&format!("arena_{arena}")],
+                    ndalloc as i64,
+                );
+            }
+        }
+    }
 
     Ok(())
 }
