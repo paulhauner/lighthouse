@@ -69,7 +69,7 @@ pub fn scrape_jemalloc_metrics_fallible() -> Result<(), Error> {
 
     for arena in 0..num_arenas {
         unsafe {
-            let nmalloc_req = format!("stats.arenas.{arena}.small.nmalloc");
+            let nmalloc_req = format!("stats.arenas.{arena}.small.nmalloc\0");
             if let Ok(nmalloc) = raw::read::<usize>(nmalloc_req.as_bytes()) {
                 set_gauge_vec(
                     &NUM_ALLOCATIONS,
@@ -78,7 +78,7 @@ pub fn scrape_jemalloc_metrics_fallible() -> Result<(), Error> {
                 );
             }
 
-            let ndalloc_req = format!("stats.arenas.{arena}.small.ndalloc");
+            let ndalloc_req = format!("stats.arenas.{arena}.small.ndalloc\0");
             if let Ok(ndalloc) = raw::read::<usize>(ndalloc_req.as_bytes()) {
                 set_gauge_vec(
                     &NUM_DEALLOCATIONS,
