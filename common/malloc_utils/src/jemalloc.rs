@@ -9,7 +9,7 @@
 //! B) `_RJEM_MALLOC_CONF` at runtime.
 use metrics::{set_gauge, try_create_int_gauge, IntGauge};
 use std::sync::LazyLock;
-use tikv_jemalloc_ctl::{arenas, epoch, stats, Access, AsName, Error};
+use tikv_jemalloc_ctl::{arenas, epoch, raw, stats, Access, AsName, Error};
 
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
@@ -33,6 +33,12 @@ pub static BYTES_RESIDENT: LazyLock<metrics::Result<IntGauge>> = LazyLock::new(|
 pub static BYTES_RETAINED: LazyLock<metrics::Result<IntGauge>> = LazyLock::new(|| {
     try_create_int_gauge("jemalloc_bytes_retained", "Equivalent to stats.retained")
 });
+pub static NUM_ALLOCATIONS: LazyLock<metrics::Result<IntGauge>> = LazyLock::new(|| {
+    try_create_int_gauge("jemalloc_num_allocations", "Equivalent to stats.nmalloc")
+});
+pub static NUM_DEALLOCATIONS: LazyLock<metrics::Result<IntGauge>> = LazyLock::new(|| {
+    try_create_int_gauge("jemalloc_num_deallocations", "Equivalent to stats.ndalloc")
+});
 
 pub fn scrape_jemalloc_metrics() {
     scrape_jemalloc_metrics_fallible().unwrap()
@@ -49,6 +55,15 @@ pub fn scrape_jemalloc_metrics_fallible() -> Result<(), Error> {
     set_gauge(&BYTES_METADATA, stats::metadata::read()? as i64);
     set_gauge(&BYTES_RESIDENT, stats::resident::read()? as i64);
     set_gauge(&BYTES_RETAINED, stats::retained::read()? as i64);
+
+    unsafe {
+        if let Ok(nmalloc) = raw::read::<usize>(b"stats.nmalloc") {
+            set_gauge(&NUM_ALLOCATIONS, nmalloc as i64);
+        }
+        if let Ok(ndalloc) = raw::read::<usize>(b"stats.ndalloc") {
+            set_gauge(&NUM_DEALLOCATIONS, ndalloc as i64);
+        }
+    }
 
     Ok(())
 }
