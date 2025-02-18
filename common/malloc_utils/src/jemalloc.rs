@@ -35,20 +35,38 @@ pub static BYTES_RESIDENT: LazyLock<metrics::Result<IntGauge>> = LazyLock::new(|
 pub static BYTES_RETAINED: LazyLock<metrics::Result<IntGauge>> = LazyLock::new(|| {
     try_create_int_gauge("jemalloc_bytes_retained", "Equivalent to stats.retained")
 });
-pub static NUM_ALLOCATIONS: LazyLock<metrics::Result<IntGaugeVec>> = LazyLock::new(|| {
-    try_create_int_gauge_vec(
-        "jemalloc_num_allocations",
-        "Equivalent to stats.nmalloc",
-        &["arena"],
-    )
-});
-pub static NUM_DEALLOCATIONS: LazyLock<metrics::Result<IntGaugeVec>> = LazyLock::new(|| {
-    try_create_int_gauge_vec(
-        "jemalloc_num_deallocations",
-        "Equivalent to stats.ndalloc",
-        &["arena"],
-    )
-});
+pub static JEMALLOC_ARENAS_SMALL_NMALLOC: LazyLock<metrics::Result<IntGaugeVec>> =
+    LazyLock::new(|| {
+        try_create_int_gauge_vec(
+            "jemalloc_arenas_small_nmalloc",
+            "Equivalent to stats.arenas.<i>.small.nmalloc",
+            &["arena"],
+        )
+    });
+pub static JEMALLOC_ARENAS_SMALL_NDALLOC: LazyLock<metrics::Result<IntGaugeVec>> =
+    LazyLock::new(|| {
+        try_create_int_gauge_vec(
+            "jemalloc_arenas_small_ndalloc",
+            "Equivalent to stats.arenas.<i>.small.ndalloc",
+            &["arena"],
+        )
+    });
+pub static JEMALLOC_ARENAS_LARGE_NMALLOC: LazyLock<metrics::Result<IntGaugeVec>> =
+    LazyLock::new(|| {
+        try_create_int_gauge_vec(
+            "jemalloc_arenas_large_nmalloc",
+            "Equivalent to stats.arenas.<i>.large.nmalloc",
+            &["arena"],
+        )
+    });
+pub static JEMALLOC_ARENAS_LARGE_NDALLOC: LazyLock<metrics::Result<IntGaugeVec>> =
+    LazyLock::new(|| {
+        try_create_int_gauge_vec(
+            "jemalloc_arenas_large_ndalloc",
+            "Equivalent to stats.arenas.<i>.large.ndalloc",
+            &["arena"],
+        )
+    });
 
 pub fn scrape_jemalloc_metrics() {
     scrape_jemalloc_metrics_fallible().unwrap()
@@ -69,27 +87,36 @@ pub fn scrape_jemalloc_metrics_fallible() -> Result<(), Error> {
 
     for arena in 0..num_arenas {
         unsafe {
-            let nmalloc_req = format!("stats.arenas.{arena}.small.nmalloc\0");
-            if let Ok(nmalloc) = raw::read::<usize>(nmalloc_req.as_bytes()) {
-                set_gauge_vec(
-                    &NUM_ALLOCATIONS,
-                    &[&format!("arena_{arena}")],
-                    nmalloc as i64,
-                );
-            }
-
-            let ndalloc_req = format!("stats.arenas.{arena}.small.ndalloc\0");
-            if let Ok(ndalloc) = raw::read::<usize>(ndalloc_req.as_bytes()) {
-                set_gauge_vec(
-                    &NUM_DEALLOCATIONS,
-                    &[&format!("arena_{arena}")],
-                    ndalloc as i64,
-                );
-            }
+            set_stats_gauge(
+                &JEMALLOC_ARENAS_SMALL_NMALLOC,
+                arena,
+                &format!("stats.arenas.{arena}.small.nmalloc\0"),
+            );
+            set_stats_gauge(
+                &JEMALLOC_ARENAS_SMALL_NDALLOC,
+                arena,
+                &format!("stats.arenas.{arena}.small.ndalloc\0"),
+            );
+            set_stats_gauge(
+                &JEMALLOC_ARENAS_LARGE_NMALLOC,
+                arena,
+                &format!("stats.arenas.{arena}.large.nmalloc\0"),
+            );
+            set_stats_gauge(
+                &JEMALLOC_ARENAS_LARGE_NDALLOC,
+                arena,
+                &format!("stats.arenas.{arena}.large.ndalloc\0"),
+            );
         }
     }
 
     Ok(())
+}
+
+unsafe fn set_stats_gauge(metric: &metrics::Result<IntGaugeVec>, arena: u32, stat: &str) {
+    if let Ok(val) = raw::read::<usize>(stat.as_bytes()) {
+        set_gauge_vec(metric, &[&format!("arena_{arena}")], val as i64);
+    }
 }
 
 pub fn page_size() -> Result<usize, Error> {
