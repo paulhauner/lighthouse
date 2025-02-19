@@ -250,7 +250,7 @@ impl ValidatorStatuses {
         {
             let committee = state.get_beacon_committee(a.data.slot, a.data.index)?;
             let attesting_indices =
-                get_attesting_indices::<E>(committee.committee, &a.aggregation_bits)?;
+                get_attesting_indices::<E>(committee.unsorted_committee(), &a.aggregation_bits)?;
 
             let mut status = ValidatorStatus::default();
 

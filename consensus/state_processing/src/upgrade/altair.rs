@@ -28,8 +28,10 @@ pub fn translate_participation<E: EthSpec>(
 
         // Apply flags to all attesting validators.
         let committee = state.get_beacon_committee(data.slot, data.index)?;
-        let attesting_indices =
-            get_attesting_indices::<E>(committee.committee, &attestation.aggregation_bits)?;
+        let attesting_indices = get_attesting_indices::<E>(
+            committee.unsorted_committee(),
+            &attestation.aggregation_bits,
+        )?;
         let epoch_participation = state.previous_epoch_participation_mut()?;
 
         for index in attesting_indices {

@@ -8,7 +8,7 @@ pub mod attesting_indices_base {
     ///
     /// Spec v0.12.1
     pub fn get_indexed_attestation<E: EthSpec>(
-        committee: &[usize],
+        committee: MaybeSortedCommittee,
         attestation: &AttestationBase<E>,
     ) -> Result<IndexedAttestation<E>, BlockOperationError<Invalid>> {
         let attesting_indices =
@@ -22,7 +22,7 @@ pub mod attesting_indices_base {
 
     /// Returns validator indices which participated in the attestation, sorted by increasing index.
     pub fn get_attesting_indices<E: EthSpec>(
-        committee: &[usize],
+        committee: MaybeSortedCommittee,
         bitlist: &BitList<E::MaxValidatorsPerCommittee>,
     ) -> Result<Vec<u64>, BeaconStateError> {
         if bitlist.len() != committee.len() {
@@ -31,13 +31,24 @@ pub mod attesting_indices_base {
 
         let mut indices = Vec::with_capacity(bitlist.num_set_bits());
 
-        for (i, validator_index) in committee.iter().enumerate() {
-            if let Ok(true) = bitlist.get(i) {
-                indices.push(*validator_index as u64)
+        match committee {
+            MaybeSortedCommittee::Unsorted(committee) => {
+                for (i, validator_index) in committee.iter().enumerate() {
+                    if let Ok(true) = bitlist.get(i) {
+                        indices.push(*validator_index as u64)
+                    }
+                }
+
+                indices.sort_unstable();
+            }
+            MaybeSortedCommittee::Sorted(committee) => {
+                for &(validator_index, committee_position) in committee.iter() {
+                    if let Ok(true) = bitlist.get(committee_position) {
+                        indices.push(validator_index as u64)
+                    }
+                }
             }
         }
-
-        indices.sort_unstable();
 
         Ok(indices)
     }
@@ -90,6 +101,8 @@ pub mod attesting_indices_electra {
     /// Returns validator indices which participated in the attestation, sorted by increasing index.
     ///
     /// Committees must be sorted by ascending order 0..committees_per_slot
+    ///
+    /// TODO(paul): use maybe-sorted here.
     pub fn get_attesting_indices<E: EthSpec>(
         committees: &[BeaconCommittee],
         aggregation_bits: &BitList<E::MaxValidatorsPerSlot>,
@@ -167,7 +180,7 @@ pub fn get_attesting_indices_from_state<E: EthSpec>(
         AttestationRef::Base(att) => {
             let committee = state.get_beacon_committee(att.data.slot, att.data.index)?;
             attesting_indices_base::get_attesting_indices::<E>(
-                committee.committee,
+                committee.unsorted_committee(),
                 &att.aggregation_bits,
             )
         }

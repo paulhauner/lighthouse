@@ -137,7 +137,9 @@ pub use crate::beacon_block_body::{
     BeaconBlockBodyRef, BeaconBlockBodyRefMut,
 };
 pub use crate::beacon_block_header::BeaconBlockHeader;
-pub use crate::beacon_committee::{BeaconCommittee, OwnedBeaconCommittee};
+pub use crate::beacon_committee::{
+    BeaconCommittee, MaybeSortedCommittee, OwnedBeaconCommittee, SortedBeaconCommittee,
+};
 pub use crate::beacon_state::{Error as BeaconStateError, *};
 pub use crate::blob_sidecar::{BlobIdentifier, BlobSidecar, BlobSidecarList, BlobsList};
 pub use crate::bls_to_execution_change::BlsToExecutionChange;

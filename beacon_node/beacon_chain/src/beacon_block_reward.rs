@@ -325,8 +325,10 @@ fn has_earlier_attestation<E: EthSpec>(
             if epoch_att.inclusion_delay < inclusion_delay {
                 let committee =
                     state.get_beacon_committee(epoch_att.data.slot, epoch_att.data.index)?;
-                let earlier_attesters =
-                    get_attesting_indices::<E>(committee.committee, &epoch_att.aggregation_bits)?;
+                let earlier_attesters = get_attesting_indices::<E>(
+                    committee.unsorted_committee(),
+                    &epoch_att.aggregation_bits,
+                )?;
                 if earlier_attesters.contains(&attester) {
                     return Ok(true);
                 }

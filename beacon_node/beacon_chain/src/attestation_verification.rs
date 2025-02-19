@@ -645,7 +645,7 @@ impl<'a, T: BeaconChainTypes> IndexedAggregatedAttestation<'a, T> {
                 match signed_aggregate {
                     SignedAggregateAndProof::Base(signed_aggregate) => {
                         attesting_indices_base::get_indexed_attestation(
-                            committee.committee,
+                            committee.unsorted_committee(),
                             &signed_aggregate.message.aggregate,
                         )
                         .map_err(|e| BeaconChainError::from(e).into())
@@ -1383,9 +1383,12 @@ pub fn obtain_indexed_attestation_and_committees_per_slot<T: BeaconChainTypes>(
                     })?;
 
                 if let Some(committee) = committee {
-                    attesting_indices_base::get_indexed_attestation(committee.committee, att)
-                        .map(|attestation| (attestation, committees_per_slot))
-                        .map_err(Error::Invalid)
+                    attesting_indices_base::get_indexed_attestation(
+                        committee.unsorted_committee(),
+                        att,
+                    )
+                    .map(|attestation| (attestation, committees_per_slot))
+                    .map_err(Error::Invalid)
                 } else {
                     Err(Error::NoCommitteeForSlotAndIndex {
                         slot: att.data.slot,
