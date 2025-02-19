@@ -387,6 +387,17 @@ pub static ATTESTATION_PROCESSING_SIGNATURE_TIMES: LazyLock<Result<Histogram>> =
             "Time spent on the signature verification of attestation processing",
         )
     });
+pub static ATTESTATION_PROCESSING_DETAIL_TIMES: LazyLock<Result<HistogramVec>> =
+    LazyLock::new(|| {
+        try_create_histogram_vec_with_buckets(
+            "attestation_processing_detail_times",
+            "Duration for detailed attestation processing tasks",
+            Ok(vec![
+                0.0001, 0.001, 0.002, 0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512, 1.024,
+            ]),
+            &["type"],
+        )
+    });
 
 /*
  * Batch Attestation Processing

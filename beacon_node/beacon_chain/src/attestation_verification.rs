@@ -476,6 +476,11 @@ impl<'a, T: BeaconChainTypes> IndexedAggregatedAttestation<'a, T> {
         signed_aggregate: &'a SignedAggregateAndProof<T::EthSpec>,
         chain: &BeaconChain<T>,
     ) -> Result<Self, Error> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["indexed_aggregated_verify"],
+        );
+
         Self::verify_slashable(signed_aggregate, chain)
             .inspect(|verified_aggregate| {
                 if let Some(slasher) = chain.slasher.as_ref() {
@@ -490,6 +495,11 @@ impl<'a, T: BeaconChainTypes> IndexedAggregatedAttestation<'a, T> {
         signed_aggregate: &SignedAggregateAndProof<T::EthSpec>,
         chain: &BeaconChain<T>,
     ) -> Result<Hash256, Error> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["indexed_aggregated_verify_early_checks"],
+        );
+
         let attestation = signed_aggregate.message().aggregate();
 
         // Ensure attestation is within the last ATTESTATION_PROPAGATION_SLOT_RANGE slots (within a
@@ -587,6 +597,11 @@ impl<'a, T: BeaconChainTypes> IndexedAggregatedAttestation<'a, T> {
         signed_aggregate: &'a SignedAggregateAndProof<T::EthSpec>,
         chain: &BeaconChain<T>,
     ) -> Result<Self, AttestationSlashInfo<'a, T, Error>> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["indexed_aggregated_verify_slashable"],
+        );
+
         use AttestationSlashInfo::*;
         let observed_attestation_key_root = match Self::verify_early_checks(signed_aggregate, chain)
         {
@@ -689,6 +704,11 @@ impl<'a, T: BeaconChainTypes> VerifiedAggregatedAttestation<'a, T> {
         observed_attestation_key_root: Hash256,
         chain: &BeaconChain<T>,
     ) -> Result<(), Error> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["aggregated_verify_late_checks"],
+        );
+
         let attestation = signed_aggregate.message().aggregate();
         let aggregator_index = signed_aggregate.message().aggregator_index();
 
@@ -732,6 +752,11 @@ impl<'a, T: BeaconChainTypes> VerifiedAggregatedAttestation<'a, T> {
         signed_aggregate: &'a SignedAggregateAndProof<T::EthSpec>,
         chain: &BeaconChain<T>,
     ) -> Result<Self, Error> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["aggregated_verify"],
+        );
+
         let indexed = IndexedAggregatedAttestation::verify(signed_aggregate, chain)?;
         Self::from_indexed(indexed, chain, CheckAttestationSignature::Yes)
     }
@@ -742,6 +767,11 @@ impl<'a, T: BeaconChainTypes> VerifiedAggregatedAttestation<'a, T> {
         chain: &BeaconChain<T>,
         check_signature: CheckAttestationSignature,
     ) -> Result<Self, Error> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["aggregated_from_indexed"],
+        );
+
         Self::verify_slashable(signed_aggregate, chain, check_signature)
             .map(|verified_aggregate| verified_aggregate.apply_to_slasher(chain))
             .map_err(|slash_info| process_slash_info(slash_info, chain))
@@ -760,6 +790,10 @@ impl<'a, T: BeaconChainTypes> VerifiedAggregatedAttestation<'a, T> {
         chain: &BeaconChain<T>,
         check_signature: CheckAttestationSignature,
     ) -> Result<Self, AttestationSlashInfo<'a, T, Error>> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["aggregated_from_verify_slashable"],
+        );
         use AttestationSlashInfo::*;
 
         let IndexedAggregatedAttestation {
@@ -818,6 +852,11 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
         attestation: AttestationRef<T::EthSpec>,
         chain: &BeaconChain<T>,
     ) -> Result<(), Error> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["indexed_unaggregated_verify_early_checks"],
+        );
+
         let attestation_epoch = attestation.data().slot.epoch(T::EthSpec::slots_per_epoch());
 
         // Check the attestation's epoch matches its target.
@@ -869,6 +908,11 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
         subnet_id: Option<SubnetId>,
         chain: &BeaconChain<T>,
     ) -> Result<(u64, SubnetId), Error> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["indexed_unaggregated_verify_middle_checks"],
+        );
+
         let expected_subnet_id = SubnetId::compute_subnet_for_attestation::<T::EthSpec>(
             attestation,
             committees_per_slot,
@@ -919,6 +963,10 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
         subnet_id: Option<SubnetId>,
         chain: &BeaconChain<T>,
     ) -> Result<Self, Error> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["indexed_unaggregated_from_verify"],
+        );
         Self::verify_slashable(attestation.to_ref(), subnet_id, chain)
             .inspect(|verified_unaggregated| {
                 if let Some(slasher) = chain.slasher.as_ref() {
@@ -934,6 +982,10 @@ impl<'a, T: BeaconChainTypes> IndexedUnaggregatedAttestation<'a, T> {
         subnet_id: Option<SubnetId>,
         chain: &BeaconChain<T>,
     ) -> Result<Self, AttestationSlashInfo<'a, T, Error>> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["indexed_unaggregated_from_verify_slashable"],
+        );
         use AttestationSlashInfo::*;
 
         if let Err(e) = Self::verify_early_checks(attestation, chain) {
@@ -983,6 +1035,11 @@ impl<'a, T: BeaconChainTypes> VerifiedUnaggregatedAttestation<'a, T> {
         validator_index: u64,
         chain: &BeaconChain<T>,
     ) -> Result<(), Error> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["unaggregated_verify_late_checks"],
+        );
+
         // Now that the attestation has been fully verified, store that we have received a valid
         // attestation from this validator.
         //
@@ -1009,6 +1066,10 @@ impl<'a, T: BeaconChainTypes> VerifiedUnaggregatedAttestation<'a, T> {
         subnet_id: Option<SubnetId>,
         chain: &BeaconChain<T>,
     ) -> Result<Self, Error> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["unaggregated_verify"],
+        );
         let indexed =
             IndexedUnaggregatedAttestation::verify(unaggregated_attestation, subnet_id, chain)?;
         Self::from_indexed(indexed, chain, CheckAttestationSignature::Yes)
@@ -1020,6 +1081,10 @@ impl<'a, T: BeaconChainTypes> VerifiedUnaggregatedAttestation<'a, T> {
         chain: &BeaconChain<T>,
         check_signature: CheckAttestationSignature,
     ) -> Result<Self, Error> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["unaggregated_from_indexed"],
+        );
         Self::verify_slashable(attestation, chain, check_signature)
             .map(|verified_unaggregated| verified_unaggregated.apply_to_slasher(chain))
             .map_err(|slash_info| process_slash_info(slash_info, chain))
@@ -1038,6 +1103,10 @@ impl<'a, T: BeaconChainTypes> VerifiedUnaggregatedAttestation<'a, T> {
         chain: &BeaconChain<T>,
         check_signature: CheckAttestationSignature,
     ) -> Result<Self, AttestationSlashInfo<'a, T, Error>> {
+        let _timer = metrics::start_timer_vec(
+            &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+            &["unaggregated_verify_slashable"],
+        );
         use AttestationSlashInfo::*;
 
         let IndexedUnaggregatedAttestation {
@@ -1107,6 +1176,11 @@ fn verify_head_block_is_known<T: BeaconChainTypes>(
     attestation: AttestationRef<T::EthSpec>,
     max_skip_slots: Option<u64>,
 ) -> Result<ProtoBlock, Error> {
+    let _timer = metrics::start_timer_vec(
+        &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+        &["verify_head_block_is_known"],
+    );
+
     let block_opt = chain
         .canonical_head
         .fork_choice_read_lock()
@@ -1155,6 +1229,11 @@ pub fn verify_propagation_slot_range<S: SlotClock, E: EthSpec>(
     attestation: &AttestationData,
     spec: &ChainSpec,
 ) -> Result<(), Error> {
+    let _timer = metrics::start_timer_vec(
+        &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+        &["verify_propagation_slot_range"],
+    );
+
     let attestation_slot = attestation.slot;
     let latest_permissible_slot = slot_clock
         .now_with_future_tolerance(spec.maximum_gossip_clock_disparity())
@@ -1370,6 +1449,10 @@ pub fn obtain_indexed_attestation_and_committees_per_slot<T: BeaconChainTypes>(
     chain: &BeaconChain<T>,
     attestation: AttestationRef<T::EthSpec>,
 ) -> Result<(IndexedAttestation<T::EthSpec>, CommitteesPerSlot), Error> {
+    let _timer = metrics::start_timer_vec(
+        &metrics::ATTESTATION_PROCESSING_DETAIL_TIMES,
+        &["obtained_indexed_attestations"],
+    );
     map_attestation_committees(chain, attestation, |(committees, committees_per_slot)| {
         match attestation {
             AttestationRef::Base(att) => {
